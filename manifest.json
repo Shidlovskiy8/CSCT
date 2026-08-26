@@ -1,6 +1,13 @@
 {
-  "version": "3",
+  "version": "1.0.0",
   "modules": [
+    {
+      "id": "hello_alert",
+      "title": "Приветственное окно",
+      "category": "Тест",
+      "description": "Показывает всплывающее окно на странице",
+      "script_url": "hello_script.js"
+    },
     {
       "id": "search_in_catalogs",
       "title": "Поиск модификаций в catalogs",
@@ -14,13 +21,6 @@
       "title": "Поиск ID комплектации",
       "description": "Поиск ID в БД через n8n на страницах автокаталога",
       "script_url": "id_by_value_auto.js",
-      "auto_run": false
-    },
-    {
-      "id": "item_add_front_clicker",
-      "title": "Avito Front Clicker",
-      "description": "Автокликер фронта для создания скриншота...",
-      "script_url": "item_add_front_clicker.js",
       "auto_run": false
     }
   ]
