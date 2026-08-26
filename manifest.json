@@ -16,10 +16,10 @@
       "auto_run": false
     },
     {
-      "id": "hello_script",
-      "title": "hello_script",
-      "description": "hello_script",
-      "script_url": "hello_script.js",
+      "id": "front_clicker",
+      "title": "Сборка подачи на фронте для скриншота",
+      "description": "Автоматическое заполнеие форм подачи по клику из модификации из каталога",
+      "script_url": "front_clicker.js",
       "auto_run": false
     }
   ]
