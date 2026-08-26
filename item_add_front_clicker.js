@@ -323,27 +323,16 @@ function fetchTableData() {
 }
 
 function fetchFromServer() {
-    return new Promise((resolve) => {
-        GM_xmlhttpRequest({
-            method: "GET",
-            url: 'https://script.google.com/macros/s/AKfycbzSW3uYLSenlUnHKwni5FWANuhzsprGZXQs5T0FoLEA8bVMo9b7YqX0GLM1NiIZxzd25A/exec',
-            timeout: 10000,
-            onload: (response) => {
-                if (response.status === 200) {
-                    try {
-                        const data = JSON.parse(response.responseText);
-                        localStorage.setItem('avito_autoclick_cache', JSON.stringify(data));
-                        localStorage.setItem('avito_autoclick_time', Date.now());
-                        resolve(data);
-                        return;
-                    } catch (e) {}
-                }
-                resolve(null);
-            },
-            onerror: () => resolve(null),
-            ontimeout: () => resolve(null)
-        });
-    });
+    return fetch('https://script.google.com/macros/s/AKfycbzSW3uYLSenlUnHKwni5FWANuhzsprGZXQs5T0FoLEA8bVMo9b7YqX0GLM1NiIZxzd25A/exec')
+        .then(response => response.ok ? response.json() : null)
+        .then(data => {
+            if (data) {
+                localStorage.setItem('avito_autoclick_cache', JSON.stringify(data));
+                localStorage.setItem('avito_autoclick_time', Date.now());
+            }
+            return data;
+        })
+        .catch(() => null);
 }
 
 function updateCacheInBackground() {
