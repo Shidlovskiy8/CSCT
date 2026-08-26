@@ -203,8 +203,8 @@ function sleep(ms) {
 }
 
 function copyToClipboard(text) {
-    if (typeof GM_setClipboard === 'function') {
-        GM_setClipboard(text);
+    if (typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(text);
     } else if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).catch(err => {
             console.error('Ошибка копирования в буфер обмена: ', err);
@@ -888,9 +888,9 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
                 }
 
                 const jsonFields = JSON.stringify(dynamicValues);
-                await GM_setValue('selected_catalog', catalogText);
-                await GM_setValue('extracted_fields', jsonFields);
-                await GM_setValue('autoclick_active', true);
+                await localStorage.setItem('selected_catalog', catalogText);
+                await localStorage.setItem('extracted_fields', jsonFields);
+                await localStorage.setItem('autoclick_active', true);
 
                 try {
                     localStorage.setItem('ac_selected_catalog', catalogText);
@@ -939,18 +939,18 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
 // =================================================================
 if (window.location.hostname.includes('avito.ru') && window.location.pathname.includes('/additem')) {
 
-    const isActive = GM_getValue('autoclick_active', false) || localStorage.getItem('ac_autoclick_active') === 'true';
+    const isActive = localStorage.getItem('autoclick_active', false) || localStorage.getItem('ac_autoclick_active') === 'true';
     if (!isActive) return;
 
     async function runPipeline() {
         ScrollLock.lock();
 
         try {
-            await GM_setValue('autoclick_active', false);
+            await localStorage.setItem('autoclick_active', false);
             localStorage.removeItem('ac_autoclick_active');
 
-            let selectedCatalog = GM_getValue('selected_catalog', null) || localStorage.getItem('ac_selected_catalog');
-            let extractedFieldsRaw = GM_getValue('extracted_fields', null) || localStorage.getItem('ac_extracted_fields') || '[]';
+            let selectedCatalog = localStorage.getItem('selected_catalog', null) || localStorage.getItem('ac_selected_catalog');
+            let extractedFieldsRaw = localStorage.getItem('extracted_fields', null) || localStorage.getItem('ac_extracted_fields') || '[]';
 
             let extractedFields = [];
             try { extractedFields = JSON.parse(extractedFieldsRaw); } catch(e) { extractedFields = []; }
