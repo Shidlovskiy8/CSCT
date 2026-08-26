@@ -15,6 +15,13 @@
       "description": "Поиск ID в БД через n8n на страницах автокаталога",
       "script_url": "id_by_value_auto.js",
       "auto_run": false
+    },
+    {
+      "id": "item_add_front_clicker",
+      "title": "Avito Front Clicker",
+      "description": "Автокликер фронта для создания скриншота...",
+      "script_url": "item_add_front_clicker.js",
+      "auto_run": false
     }
   ]
 }
