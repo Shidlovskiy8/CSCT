@@ -687,9 +687,6 @@
   const path = window.location.pathname;
 
   if (host.includes('catalogs.avito.ru')) {
-    let preloadedTableData = null;
-    fetchTableData().then(data => { preloadedTableData = data; }).catch(() => {});
-
     let buttonInjected = false;
 
     function injectButton() {
@@ -701,13 +698,14 @@
 
       if (!targetEl) return;
 
-      const existingBtn = targetEl.parentNode?.querySelector('button[textContent*="Автоклик"]');
+      const existingBtn = targetEl.parentNode?.querySelector('.ext-autoclick-btn');
       if (existingBtn) {
         buttonInjected = true;
         return;
       }
 
       const btn = document.createElement('button');
+      btn.className = 'ext-autoclick-btn';
       btn.type = 'button';
       btn.textContent = '🚀 Автоклик';
       btn.style.cssText = `
@@ -716,182 +714,10 @@
         font-size: 12px; font-weight: bold; vertical-align: middle; z-index: 9999;
       `;
 
-      btn.addEventListener('click', async (e) => {
+      btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-
-        btn.textContent = '⏳ Сбор...';
-        btn.disabled = true;
-
-        try {
-          const catalogSpan = document.querySelector('span.styles-module-size_s-e9rn2') ||
-            document.querySelector('span[data-marker="modification/select-text"]') ||
-            document.querySelector('h1');
-          const catalogText = catalogSpan ? catalogSpan.textContent.trim() : null;
-
-          if (!catalogText) {
-            alert('Не удалось определить название каталога на странице!');
-            return;
-          }
-
-          let dynamicValues = [];
-          const catalogTextNorm = normalizeText(catalogText);
-          const tableData = preloadedTableData || await fetchTableData();
-          const fieldsConfig = tableData.fields || [];
-
-          if (fieldsConfig.length > 0) {
-            const matchingFieldsConfig = fieldsConfig.filter(cfg => {
-              const fieldCatalog = cfg.Catalog || cfg.catalog || cfg.catalog_name;
-              if (!fieldCatalog) return false;
-              const cfgCatNorm = normalizeText(parseTargetText(fieldCatalog));
-              return cfgCatNorm && (catalogTextNorm.includes(cfgCatNorm) || cfgCatNorm.includes(catalogTextNorm));
-            });
-
-            const pageParamsMap = new Map();
-            document.querySelectorAll('div[data-marker="modification/param"]').forEach(row => {
-              const nameLink = row.querySelector('a[data-marker="modification/param-name-link"]');
-              if (!nameLink) return;
-
-              const paramNameKey = normalizeText(nameLink.textContent);
-              const valLinks = Array.from(row.querySelectorAll('a[data-marker="modification/value-name-link"]'));
-
-              if (valLinks.length > 0) {
-                const combinedValues = valLinks.map(a => a.textContent.trim()).filter(Boolean).join(', ');
-                pageParamsMap.set(paramNameKey, combinedValues);
-              } else {
-                const valContainer = row.querySelector('[class*="valueList"], [class*="valueContainer"], span');
-                if (valContainer) {
-                  pageParamsMap.set(paramNameKey, valContainer.textContent.trim());
-                }
-              }
-            });
-
-            for (const cfg of matchingFieldsConfig) {
-              const fieldName = cfg.value;
-              if (!fieldName) continue;
-
-              const paramTarget = cfg.value_front_target || fieldName;
-              const paramType = cfg.value_type || "list";
-              const normFieldName = normalizeText(fieldName);
-
-              const tableDefaultVal = cfg.default_value || cfg.defaultValue || cfg.default;
-              const rawCustomType = cfg.custom_value_type || cfg.customValueType || "";
-              const customType = String(rawCustomType).trim().toLowerCase();
-              let customVal = cfg.custom_value || cfg.customValue || "";
-
-              const pageParsedValue = pageParamsMap.get(normFieldName) || null;
-              let val = null;
-              let isDefault = false;
-
-              if (customType === 'catalog') {
-                if (pageParsedValue) {
-                  customVal = pageParsedValue;
-                } else if (fieldName.toLowerCase().includes('модификац')) {
-                  customVal = catalogText;
-                }
-              }
-
-              if (tableDefaultVal && String(tableDefaultVal).trim() !== "") {
-                val = String(tableDefaultVal).trim();
-                isDefault = true;
-              } else {
-                val = pageParsedValue ? pageParsedValue.split(',')[0].trim() : null;
-                if (!val && fieldName.toLowerCase().includes('модификац')) {
-                  val = catalogText;
-                }
-              }
-
-              let userSelectedValue = null;
-              if ((customType === 'list' || customType === 'catalog') && customVal) {
-                const options = String(customVal).split(',').map(opt => opt.trim()).filter(Boolean);
-                if (options.length > 0) {
-                  btn.textContent = `⏳ Выбор: ${fieldName}`;
-                  userSelectedValue = await promptUserForCustomValue(fieldName, options);
-                  if (userSelectedValue === null) {
-                    btn.textContent = '🚀 Автоклик';
-                    btn.disabled = false;
-                    return;
-                  }
-                }
-              }
-
-              if (userSelectedValue) val = userSelectedValue;
-
-              if (val || customVal) {
-                dynamicValues.push({
-                  name: fieldName,
-                  type: paramType,
-                  target: paramTarget,
-                  value: val,
-                  default_value: tableDefaultVal,
-                  custom_value_type: customType,
-                  custom_value: customVal,
-                  isDefault: isDefault
-                });
-              }
-            }
-            dynamicValues.sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));
-          }
-
-          let categoryChainStr = '';
-          const routeData = tableData.route || tableData;
-          if (Array.isArray(routeData)) {
-            let routeRow = routeData.find(r => {
-              const cat = normalizeText(parseTargetText(r.Catalog || r.catalog));
-              return cat && (catalogTextNorm.includes(cat) || cat.includes(catalogTextNorm));
-            });
-
-            if (routeRow) {
-              const catSteps = [];
-              if (routeRow.category) catSteps.push(resolveTarget(routeRow.category));
-
-              const stepKeys = Object.keys(routeRow)
-                .filter(key => /^step\d+$/i.test(key))
-                .sort((a, b) => parseInt(a.replace(/\D/g, ''), 10) - parseInt(b.replace(/\D/g, ''), 10));
-
-              stepKeys.forEach(k => {
-                if (routeRow[k]) catSteps.push(resolveTarget(routeRow[k]));
-              });
-
-              if (catSteps.length > 0) categoryChainStr = catSteps.join(' / ');
-            }
-          }
-
-          const clipboardLines = [];
-          if (categoryChainStr) {
-            clipboardLines.push(`Категория: ${categoryChainStr}`);
-            clipboardLines.push('');
-          }
-
-          dynamicValues.forEach(f => {
-            let finalVal = parseTargetText(f.value);
-            if (!finalVal && f.default_value) {
-              finalVal = parseTargetText(f.default_value) || String(f.default_value).trim();
-            }
-            clipboardLines.push(`${f.name}: «${finalVal || ''}»`);
-          });
-
-          if (clipboardLines.length > 0) {
-            await copyToClipboard(clipboardLines.join('\n'));
-          }
-
-          // Передаем данные через postMessage в content.js для сохранения в chrome.storage.local
-          window.postMessage({
-            type: 'SET_AUTOCLICK_DATA',
-            payload: {
-              ac_selected_catalog: catalogText,
-              ac_extracted_fields: JSON.stringify(dynamicValues),
-              ac_autoclick_active: true
-            }
-          }, '*');
-
-        } catch (err) {
-          console.error("[AutoClicker Error]", err);
-          alert(`Ошибка автокликера: ${err.message || err}`);
-        } finally {
-          btn.textContent = '🚀 Автоклик';
-          btn.disabled = false;
-        }
+        // Всю обработку (сбор, запись в chrome.storage.local и переход) делает content.js
       });
 
       if (targetEl.parentNode) {
@@ -917,40 +743,31 @@
 
   } else if (host.includes('avito.ru') && path.includes('/additem')) {
 
-      // Слушаем команду на старт от content.js
-  window.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'START_AUTOCLICK_PIPELINE') {
-      const { selectedCatalog, extractedFields } = event.data;
-      
-      // Небольшая задержка для завершения рендера React
-      setTimeout(() => {
-        runPipeline(selectedCatalog, extractedFields);
-      }, 500);
-    }
-  });
-  
-  // Запрашиваем данные у content.js после загрузки DOM
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(() => window.postMessage({ type: 'GET_AUTOCLICK_DATA' }, '*'), 800);
-    });
-  } else {
-    setTimeout(() => window.postMessage({ type: 'GET_AUTOCLICK_DATA' }, '*'), 800);
-  }
+    // Опрос chrome.storage.local на старт кликера
+    const checkInterval = setInterval(() => {
+      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) return;
 
-    async function runPipeline() {
+      chrome.storage.local.get(['ac_autoclick_active', 'ac_selected_catalog', 'ac_extracted_fields'], (res) => {
+        if (res && res.ac_autoclick_active) {
+          
+          chrome.storage.local.set({ ac_autoclick_active: false });
+          clearInterval(checkInterval);
+
+          const selectedCatalog = res.ac_selected_catalog;
+          let extractedFields = [];
+          try { extractedFields = JSON.parse(res.ac_extracted_fields || '[]'); } catch (e) {}
+
+          runPipeline(selectedCatalog, extractedFields);
+        }
+      });
+    }, 500);
+
+    setTimeout(() => clearInterval(checkInterval), 15000);
+
+    async function runPipeline(selectedCatalog, extractedFields) {
       ScrollLock.lock();
 
       try {
-        Storage.set('autoclick_active', false);
-
-        let selectedCatalog = Storage.get('selected_catalog', null);
-        let extractedFields = Storage.get('extracted_fields', []);
-
-        if (typeof extractedFields === 'string') {
-          try { extractedFields = JSON.parse(extractedFields); } catch (e) { extractedFields = []; }
-        }
-
         if (!selectedCatalog) return;
 
         ui = new DebugUI();
@@ -1116,12 +933,6 @@
       } finally {
         ScrollLock.unlock();
       }
-    }
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', runPipeline);
-    } else {
-      runPipeline();
     }
   }
 })();
