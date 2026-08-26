@@ -3,6 +3,8 @@
 // =================================================================
 
 (function() {
+    'use strict';
+
     // 🛑 Защита от повторного внедрения и исполнения скрипта
     if (window.__AUTOFILL_ENGINE_LOADED__) {
         console.warn('⚡ [Autofill Engine] Скрипт уже загружен на этой странице.');
@@ -87,7 +89,7 @@
 
             this.container.innerHTML = `
                 <div style="font-weight: 600; border-bottom: 1px solid #313244; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; color: #89b4fa; flex-shrink: 0;">
-                    <span>⚡ Автокликер <span style="font-size: 9px; opacity: 0.7;">v8.60</span></span>
+                    <span>⚡ Автокликер <span style="font-size: 9px; opacity: 0.7;">v8.61</span></span>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <span id="ac-ui-status" style="font-size: 10px; background: #2a2b3d; padding: 2px 6px; border-radius: 4px; color: #f9e2af; border: 1px solid #45475a;">ГОТОВ</span>
                         <button id="ac-ui-toggle" style="background: #313244; color: #a6adc8; border: none; width: 20px; height: 20px; border-radius: 4px; cursor: pointer;">—</button>
@@ -150,51 +152,52 @@
     };
 
     // =================================================================
-    // 3. ИНЖЕКТОР КНОПКИ (Страница каталога)
+    // 3. НАДЕЖНЫЙ ИНЖЕКТОР КНОПКИ (Через MutationObserver)
     // =================================================================
-    function initCatalogButtonInjector() {
+    function injectCatalogButton() {
         if (window.location.href.includes('/additem')) return;
 
-        setInterval(() => {
-            const targetElement = 
-                document.querySelector('span[data-marker="modification/select-text"]') || 
-                document.querySelector('h1[data-marker="header/title"]') ||
-                document.querySelector('h1.title-info-title-text') ||
-                document.querySelector('.title-info-title');
+        // Ищем целевой контейнер или альтернативные заголовки на странице каталога
+        const targetContainer = 
+            document.querySelector('.styles-module-itemLabelWrapper-Kpmoc') || 
+            document.querySelector('span[data-marker="modification/select-text"]')?.parentElement ||
+            document.querySelector('h1[data-marker="header/title"]') ||
+            document.querySelector('h1.title-info-title-text');
 
-            if (targetElement && !document.querySelector('.ext-autoclick-btn')) {
-                const btn = document.createElement('button');
-                btn.className = 'ext-autoclick-btn';
-                btn.type = 'button';
-                btn.innerHTML = '🚀 Собрать подачу';
-                btn.style.cssText = `
-                    margin-left: 12px;
-                    padding: 6px 14px;
-                    background: #00a550;
-                    color: #ffffff;
-                    border: none;
-                    border-radius: 6px;
-                    cursor: pointer;
-                    font-size: 13px;
-                    font-weight: 600;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
-                    vertical-align: middle;
-                    transition: background 0.2s ease;
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 6px;
-                    z-index: 9999;
-                `;
+        if (targetContainer && !document.getElementById('ext-autoclick-btn')) {
+            const btn = document.createElement('button');
+            btn.id = 'ext-autoclick-btn';
+            btn.type = 'button';
+            btn.innerHTML = '🚀 Собрать подачу';
+            btn.style.cssText = `
+                margin-left: 10px;
+                padding: 5px 12px;
+                background: #00a550;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 12px;
+                font-weight: 600;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+                vertical-align: middle;
+                transition: background 0.2s ease;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                z-index: 9999;
+            `;
 
-                btn.addEventListener('click', onCollectButtonClick);
+            btn.addEventListener('click', onCollectButtonClick);
 
-                if (targetElement.tagName === 'H1') {
-                    targetElement.appendChild(btn);
-                } else {
-                    targetElement.parentElement.appendChild(btn);
-                }
+            // Пытаемся встроить возле иконок или в конец контейнера
+            const iconsBlock = targetContainer.querySelector('.styles-module-iconsBlock-gfM0R');
+            if (iconsBlock) {
+                iconsBlock.insertAdjacentElement('afterend', btn);
+            } else {
+                targetContainer.appendChild(btn);
             }
-        }, 1000);
+        }
     }
 
     function onCollectButtonClick(e) {
@@ -206,7 +209,7 @@
                             document.querySelector('h1');
 
         const catalogText = catalogSpan ? catalogSpan.textContent.trim() : null;
-        if (!catalogText) return alert('Каталог не найден');
+        if (!catalogText) return alert('Каталог не найден на странице');
 
         let fieldsConfig = [];
         try {
@@ -546,9 +549,11 @@
     }
 
     // =================================================================
-    // 5. ИНИЦИАЛИЗАЦИЯ
+    // 5. ИНИЦИАЛИЗАЦИЯ НАБЛЮДАТЕЛЯ DOM
     // =================================================================
-    initCatalogButtonInjector();
+    const observer = new MutationObserver(injectCatalogButton);
+    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    injectCatalogButton();
 
     if (window.location.href.includes('/additem')) {
         const mountUI = () => {
