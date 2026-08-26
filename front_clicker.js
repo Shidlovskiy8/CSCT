@@ -2,11 +2,11 @@
 // МОНОЛИТНЫЙ СКРИПТ АВТОЗАПОЛНЕНИЯ (ALL-IN-ONE JS)
 // =================================================================
 
-// 1. ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ И СОСТОЯНИЕ
-const TARGET_MAP = {};
-let ui = null;
-let isExecuting = false;
-const CACHE_TTL = 24 * 60 * 60 * 1000;
+// 1. ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ И СОСТОЯНИЕ (Защита от повторного объявления)
+window.TARGET_MAP = window.TARGET_MAP || {};
+var ui = window.ui || null;
+var isExecuting = window.isExecuting || false;
+var CACHE_TTL = 24 * 60 * 60 * 1000;
 
 // =================================================================
 // 2. МОДУЛЬ БЛОКИРОВКИ РУЧНОГО СКРОЛЛА (ScrollLock)
@@ -204,7 +204,7 @@ function resolveTarget(rawName) {
     if (!rawName) return "";
     const clean = parseTargetText(rawName);
     const lowerKey = clean.toLowerCase();
-    return TARGET_MAP[lowerKey] || clean;
+    return window.TARGET_MAP[lowerKey] || clean;
 }
 
 function sleep(ms) {
@@ -443,7 +443,7 @@ async function fillFormField(field) {
         }, 3000);
 
         if (!fieldContainer) {
-            ui.log(`❌ Поле "${name}" (${targetClean}) не найдено`, '#ff5555');
+            window.ui.log(`❌ Поле "${name}" (${targetClean}) не найдено`, '#ff5555');
             return false;
         }
 
@@ -469,11 +469,11 @@ async function fillFormField(field) {
             targetOption.scrollIntoView({ behavior: 'auto', block: 'nearest' });
             await sleep(50);
             await triggerFullClick(targetOption);
-            ui.log(`🎯 [Dropdown] Выбран пункт: "${targetOption.textContent.trim()}"`, '#50fa7b');
+            window.ui.log(`🎯 [Dropdown] Выбран пункт: "${targetOption.textContent.trim()}"`, '#50fa7b');
             await safeResetDropdownState();
             return true;
         } else {
-            ui.log(`❌ [Dropdown] Не найден вариант "${valClean}" в списке "${name}"`, '#ff5555');
+            window.ui.log(`❌ [Dropdown] Не найден вариант "${valClean}" в списке "${name}"`, '#ff5555');
             await safeResetDropdownState();
             return false;
         }
@@ -542,10 +542,10 @@ async function fillFormField(field) {
             await triggerFullClick(clickTarget);
 
             await sleep(50);
-            ui.log(`🎯 Выбрана радиокнопка/вариант: "${valClean}"`, '#50fa7b');
+            window.ui.log(`🎯 Выбрана радиокнопка/вариант: "${valClean}"`, '#50fa7b');
             return true;
         } else {
-            ui.log(`⚠️ [Radio/Button] Вариант "${valClean}" не найден, пробуем как input...`, '#ffb86c');
+            window.ui.log(`⚠️ [Radio/Button] Вариант "${valClean}" не найден, пробуем как input...`, '#ffb86c');
         }
     }
 
@@ -561,7 +561,7 @@ async function fillFormField(field) {
 
     const currentValue = normalizeText(input.value);
     if (currentValue === normalizeText(valClean)) {
-        ui.log(`ℹ️ Поле "${targetClean}" уже содержит значение "${valClean}". Пропуск.`, '#8be9fd');
+        window.ui.log(`ℹ️ Поле "${targetClean}" уже содержит значение "${valClean}". Пропуск.`, '#8be9fd');
         return true;
     }
 
@@ -588,7 +588,7 @@ async function fillFormField(field) {
             targetOption.scrollIntoView({ behavior: 'auto', block: 'nearest' });
             await sleep(30);
             await triggerFullClick(targetOption);
-            ui.log(`🎯 Выбран пункт списка: "${targetOption.textContent.trim()}"`, '#50fa7b');
+            window.ui.log(`🎯 Выбран пункт списка: "${targetOption.textContent.trim()}"`, '#50fa7b');
         } else {
             input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
         }
@@ -604,17 +604,17 @@ async function fillFormField(field) {
 // 7. ИСПОЛНИТЕЛЬНЫЙ ПАЙПЛАЙН (PIPELINE) И СЛУШАТЕЛИ
 // =================================================================
 async function runAutoClickerPipeline(fieldsStack) {
-    if (isExecuting) return;
-    isExecuting = true;
+    if (window.isExecuting) return;
+    window.isExecuting = true;
 
-    if (!ui) ui = new DebugUI();
-    ui.setStatus('В РАБОТЕ', '#f9e2af');
-    ui.log('🏁 Запуск заполнения полей на странице...', '#89b4fa');
+    if (!window.ui) window.ui = new DebugUI();
+    window.ui.setStatus('В РАБОТЕ', '#f9e2af');
+    window.ui.log('🏁 Запуск заполнения полей на странице...', '#89b4fa');
     
     ScrollLock.lock();
 
     try {
-        ui.log('📥 Загрузка справочных данных (Google Sheets/Cache)...', '#bac2de');
+        window.ui.log('📥 Загрузка справочных данных (Google Sheets/Cache)...', '#bac2de');
         const dbData = await fetchTableData();
         
         if (dbData && dbData.fields) {
@@ -622,7 +622,7 @@ async function runAutoClickerPipeline(fieldsStack) {
                 const targetKey = parseTargetText(f.target || f.name).toLowerCase();
                 const sourceKey = parseTargetText(f.name || f.target).toLowerCase();
                 if (targetKey && sourceKey) {
-                    TARGET_MAP[sourceKey] = targetKey;
+                    window.TARGET_MAP[sourceKey] = targetKey;
                 }
             });
         }
@@ -639,11 +639,11 @@ async function runAutoClickerPipeline(fieldsStack) {
             });
         }
 
-        ui.setFields(processedFields);
+        window.ui.setFields(processedFields);
 
         if (processedFields.length === 0) {
-            ui.log('⚠️ Стек параметров пуст. Проверьте переданные данные.', '#ffb86c');
-            ui.setStatus('ОШИБКА', '#ff5555');
+            window.ui.log('⚠️ Стек параметров пуст. Проверьте переданные данные.', '#ffb86c');
+            window.ui.setStatus('ОШИБКА', '#ff5555');
             return;
         }
 
@@ -652,72 +652,87 @@ async function runAutoClickerPipeline(fieldsStack) {
             const field = processedFields[i];
             const fieldName = field.name || field.target || `Поле #${i + 1}`;
 
-            ui.log(`⏳ [${i + 1}/${processedFields.length}] Обработка: "${fieldName}"...`, '#cdd6f4');
+            window.ui.log(`⏳ [${i + 1}/${processedFields.length}] Обработка: "${fieldName}"...`, '#cdd6f4');
 
             const result = await fillFormField(field);
 
             if (result) {
                 successCount++;
             } else {
-                ui.log(`⚠️ Не удалось заполнить: "${fieldName}"`, '#ffb86c');
+                window.ui.log(`⚠️ Не удалось заполнить: "${fieldName}"`, '#ffb86c');
             }
 
             await sleep(250);
         }
 
-        ui.log(`🎉 Заполнение завершено! Успешно: ${successCount} из ${processedFields.length}`, '#50fa7b');
-        ui.setStatus('ГОТОВО', '#50fa7b');
+        window.ui.log(`🎉 Заполнение завершено! Успешно: ${successCount} из ${processedFields.length}`, '#50fa7b');
+        window.ui.setStatus('ГОТОВО', '#50fa7b');
 
     } catch (err) {
         console.error('[AutoClicker Error]:', err);
-        ui.log(`💥 Критическая ошибка: ${err.message}`, '#ff5555');
-        ui.setStatus('СБОЙ', '#ff5555');
+        window.ui.log(`💥 Критическая ошибка: ${err.message}`, '#ff5555');
+        window.ui.setStatus('СБОЙ', '#ff5555');
     } finally {
         ScrollLock.unlock();
-        isExecuting = false;
+        window.isExecuting = false;
     }
 }
 
-// Слушатель команд от Chrome Extension Popup / Background
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'START_AUTOCLICK') {
-        if (isExecuting) {
-            ui?.log('⚠️ Процесс автокликера уже запущен!', '#ffb86c');
-            sendResponse({ status: 'already_running' });
-            return true;
-        }
-        
-        const fieldsStack = request.fields || [];
-        runAutoClickerPipeline(fieldsStack);
-        sendResponse({ status: 'started' });
-    }
-    return true;
-});
-
-// Хоткей F2 для мгновенной отладки локально сохраненного стека
-window.addEventListener('keydown', (e) => {
-    if (e.key === 'F2' && !isExecuting) {
-        ui?.log('🚀 Запуск автокликера по клавише F2...', '#89b4fa');
-        chrome.storage.local.get(['pendingFieldsStack'], (data) => {
-            if (data.pendingFieldsStack && data.pendingFieldsStack.length > 0) {
-                runAutoClickerPipeline(data.pendingFieldsStack);
-            } else {
-                ui?.log('❌ Ошибка: В локальном хранилище нет сохраненного стека полей!', '#ff5555');
+// Защищенный регистратор сообщений для Chrome API
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === 'START_AUTOCLICK') {
+            if (window.isExecuting) {
+                window.ui?.log('⚠️ Процесс автокликера уже запущен!', '#ffb86c');
+                sendResponse({ status: 'already_running' });
+                return true;
             }
-        });
+            
+            const fieldsStack = request.fields || [];
+            runAutoClickerPipeline(fieldsStack);
+            sendResponse({ status: 'started' });
+        }
+        return true;
+    });
+}
+
+// Хоткей F2 для мгновенной отладки
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'F2' && !window.isExecuting) {
+        window.ui?.log('🚀 Запуск автокликера по клавише F2...', '#89b4fa');
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.get(['pendingFieldsStack'], (data) => {
+                if (data.pendingFieldsStack && data.pendingFieldsStack.length > 0) {
+                    runAutoClickerPipeline(data.pendingFieldsStack);
+                } else {
+                    window.ui?.log('❌ Ошибка: В локальном хранилище нет сохраненного стека полей!', '#ff5555');
+                }
+            });
+        }
     }
 });
 
-// Точка входа: рендерим UI-панель сразу после формирования DOM
+// Точка входа: гарантированная инициализация UI при любой стадии загрузки
 (function initExtensionContext() {
     const mountUI = () => {
-        ui = new DebugUI();
-        ui.log('💡 Автокликер готов к работе (F2 или расширение).', '#89b4fa');
+        if (!window.ui) {
+            window.ui = new DebugUI();
+            window.ui.log('💡 Автокликер готов к работе (F2 или расширение).', '#89b4fa');
+        }
     };
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', mountUI);
     } else {
         mountUI();
+    }
+    
+    // Проверка автостарта по стеку из storage
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(['pendingFieldsStack'], (data) => {
+            if (data.pendingFieldsStack && data.pendingFieldsStack.length > 0) {
+                runAutoClickerPipeline(data.pendingFieldsStack);
+            }
+        });
     }
 })();
