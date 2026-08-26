@@ -6,8 +6,7 @@
       "title": "Поиск модификаций в catalogs",
       "category": "Helpdesk",
       "description": "Встраивает кнопку поиска и модальное окно на страницах тикетов",
-      "script_url": "search_in_catalogs.js",
-      "auto_run": false
+      "script_url": "search_in_catalogs.js"
     },
     {
       "id": "id_by_value_auto",
