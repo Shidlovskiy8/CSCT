@@ -680,7 +680,10 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
     let buttonInjected = false;
 
     function injectButton() {
-        if (buttonInjected) return;
+        if (document.getElementById('autoclick-inject-btn')) {
+            buttonInjected = true;
+            return;
+        }
 
         const targetEl = document.querySelector('button[data-marker="modification-name/historyBtn"]') ||
               document.querySelector('[class*="modification-name"]') ||
@@ -688,13 +691,10 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
 
         if (!targetEl) return;
 
-        const existingBtn = targetEl.parentNode?.querySelector('button[textContent*="Автоклик"]');
-        if (existingBtn) {
-            buttonInjected = true;
-            return;
-        }
+        buttonInjected = true;
 
         const btn = document.createElement('button');
+        btn.id = 'autoclick-inject-btn';
         btn.type = 'button';
         btn.textContent = '🚀 Автоклик';
         btn.style.cssText = `
@@ -914,11 +914,14 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
     });
     urlObserver.observe(document.head, { childList: true, subtree: true });
 
-    const observer = new MutationObserver(() => {
-        injectButton();
+    // Непрерывный надежный мониторинг DOM, чтобы кнопка никогда не пропадала при обновлениях
+    const domObserver = new MutationObserver(() => {
+        if (!document.getElementById('autoclick-inject-btn')) {
+            buttonInjected = false;
+            injectButton();
+        }
     });
-
-    observer.observe(document.body, { childList: true, subtree: true });
+    domObserver.observe(document.body, { childList: true, subtree: true });
 
     injectButton();
 }
