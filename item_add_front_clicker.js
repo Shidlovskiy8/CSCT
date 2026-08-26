@@ -202,13 +202,13 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function copyToClipboard(text) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        try {
-            await navigator.clipboard.writeText(text);
-        } catch (err) {
+function copyToClipboard(text) {
+    if (typeof GM_setClipboard === 'function') {
+        GM_setClipboard(text);
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(err => {
             console.error('Ошибка копирования в буфер обмена: ', err);
-        }
+        });
     }
 }
 
@@ -323,16 +323,27 @@ function fetchTableData() {
 }
 
 function fetchFromServer() {
-    return fetch('https://script.google.com/macros/s/AKfycbzSW3uYLSenlUnHKwni5FWANuhzsprGZXQs5T0FoLEA8bVMo9b7YqX0GLM1NiIZxzd25A/exec')
-        .then(response => response.ok ? response.json() : null)
-        .then(data => {
-            if (data) {
-                localStorage.setItem('avito_autoclick_cache', JSON.stringify(data));
-                localStorage.setItem('avito_autoclick_time', Date.now());
-            }
-            return data;
-        })
-        .catch(() => null);
+    return new Promise((resolve) => {
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: 'https://script.google.com/macros/s/AKfycbzSW3uYLSenlUnHKwni5FWANuhzsprGZXQs5T0FoLEA8bVMo9b7YqX0GLM1NiIZxzd25A/exec',
+            timeout: 10000,
+            onload: (response) => {
+                if (response.status === 200) {
+                    try {
+                        const data = JSON.parse(response.responseText);
+                        localStorage.setItem('avito_autoclick_cache', JSON.stringify(data));
+                        localStorage.setItem('avito_autoclick_time', Date.now());
+                        resolve(data);
+                        return;
+                    } catch (e) {}
+                }
+                resolve(null);
+            },
+            onerror: () => resolve(null),
+            ontimeout: () => resolve(null)
+        });
+    });
 }
 
 function updateCacheInBackground() {
@@ -677,26 +688,31 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
     let preloadedTableData = null;
     fetchTableData().then(data => { preloadedTableData = data; }).catch(() => {});
 
+    let buttonInjected = false;
+
     function injectButton() {
-        // Проверяем, существует ли УЖЕ кнопка в реальном DOM
-        if (document.getElementById('ac-global-start-btn')) return;
+        if (buttonInjected) return;
 
-        // Поиск целевого элемента для вставки
         const targetEl = document.querySelector('button[data-marker="modification-name/historyBtn"]') ||
-                         document.querySelector('[class*="modification-name"]') ||
-                         document.querySelector('h1');
+              document.querySelector('[class*="modification-name"]') ||
+              document.querySelector('h1');
 
-        if (!targetEl || !targetEl.parentNode) return;
+        if (!targetEl) return;
+
+        const existingBtn = targetEl.parentNode?.querySelector('button[textContent*="Автоклик"]');
+        if (existingBtn) {
+            buttonInjected = true;
+            return;
+        }
 
         const btn = document.createElement('button');
-        btn.id = 'ac-global-start-btn'; // Фиксированный ID вместо нестандартных селекторов
         btn.type = 'button';
         btn.textContent = '🚀 Автоклик';
         btn.style.cssText = `
-            margin-left: 8px; padding: 4px 10px; background-color: #00aaff;
-            color: #ffffff; border: none; border-radius: 4px; cursor: pointer;
-            font-size: 12px; font-weight: bold; vertical-align: middle; z-index: 9999;
-        `;
+        margin-left: 8px; padding: 4px 10px; background-color: #00aaff;
+        color: #ffffff; border: none; border-radius: 4px; cursor: pointer;
+        font-size: 12px; font-weight: bold; vertical-align: middle; z-index: 9999;
+    `;
 
         btn.addEventListener('click', async (e) => {
             e.preventDefault();
@@ -707,8 +723,8 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
 
             try {
                 const catalogSpan = document.querySelector('span.styles-module-size_s-e9rn2') ||
-                                     document.querySelector('span[data-marker="modification/select-text"]') ||
-                                     document.querySelector('h1');
+                      document.querySelector('span[data-marker="modification/select-text"]') ||
+                      document.querySelector('h1');
                 const catalogText = catalogSpan ? catalogSpan.textContent.trim() : null;
 
                 if (!catalogText) {
@@ -794,7 +810,9 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
                                 userSelectedValue = await promptUserForCustomValue(fieldName, options);
 
                                 if (userSelectedValue === null) {
-                                    return; // Прерываем процесс, finally вернет кнопку в активное состояние
+                                    btn.textContent = '🚀 Автоклик';
+                                    btn.disabled = false;
+                                    return;
                                 }
                             }
                         }
@@ -870,9 +888,9 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
                 }
 
                 const jsonFields = JSON.stringify(dynamicValues);
-                localStorage.setItem('selected_catalog', catalogText);
-                localStorage.setItem('extracted_fields', jsonFields);
-                localStorage.setItem('autoclick_active', 'true');
+                await GM_setValue('selected_catalog', catalogText);
+                await GM_setValue('extracted_fields', jsonFields);
+                await GM_setValue('autoclick_active', true);
 
                 try {
                     localStorage.setItem('ac_selected_catalog', catalogText);
@@ -891,24 +909,28 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
             }
         });
 
-        targetEl.parentNode.insertBefore(btn, targetEl.nextSibling);
+        if (targetEl.parentNode) {
+            targetEl.parentNode.insertBefore(btn, targetEl.nextSibling);
+            buttonInjected = true;
+        }
     }
 
-    // Слушатель изменений DOM (MutationObserver)
+    let lastHref = window.location.href;
+    const urlObserver = new MutationObserver(() => {
+        if (window.location.href !== lastHref) {
+            lastHref = window.location.href;
+            buttonInjected = false;
+            injectButton();
+        }
+    });
+    urlObserver.observe(document.head, { childList: true, subtree: true });
+
     const observer = new MutationObserver(() => {
         injectButton();
     });
 
-    // Наблюдаем за document.body
-    if (document.body) {
-        observer.observe(document.body, { childList: true, subtree: true });
-    } else {
-        document.addEventListener('DOMContentLoaded', () => {
-            observer.observe(document.body, { childList: true, subtree: true });
-        });
-    }
+    observer.observe(document.body, { childList: true, subtree: true });
 
-    // Первичный запуск
     injectButton();
 }
 
@@ -917,18 +939,18 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
 // =================================================================
 if (window.location.hostname.includes('avito.ru') && window.location.pathname.includes('/additem')) {
 
-    const isActive = localStorage.getItem('autoclick_active', false) || localStorage.getItem('ac_autoclick_active') === 'true';
+    const isActive = GM_getValue('autoclick_active', false) || localStorage.getItem('ac_autoclick_active') === 'true';
     if (!isActive) return;
 
     async function runPipeline() {
         ScrollLock.lock();
 
         try {
-            localStorage.setItem('autoclick_active', 'false');
+            await GM_setValue('autoclick_active', false);
             localStorage.removeItem('ac_autoclick_active');
 
-            let selectedCatalog = localStorage.getItem('selected_catalog', null) || localStorage.getItem('ac_selected_catalog');
-            let extractedFieldsRaw = localStorage.getItem('extracted_fields', null) || localStorage.getItem('ac_extracted_fields') || '[]';
+            let selectedCatalog = GM_getValue('selected_catalog', null) || localStorage.getItem('ac_selected_catalog');
+            let extractedFieldsRaw = GM_getValue('extracted_fields', null) || localStorage.getItem('ac_extracted_fields') || '[]';
 
             let extractedFields = [];
             try { extractedFields = JSON.parse(extractedFieldsRaw); } catch(e) { extractedFields = []; }
