@@ -677,31 +677,26 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
     let preloadedTableData = null;
     fetchTableData().then(data => { preloadedTableData = data; }).catch(() => {});
 
-    let buttonInjected = false;
-
     function injectButton() {
-        if (buttonInjected) return;
+        // Проверяем, существует ли УЖЕ кнопка в реальном DOM
+        if (document.getElementById('ac-global-start-btn')) return;
 
+        // Поиск целевого элемента для вставки
         const targetEl = document.querySelector('button[data-marker="modification-name/historyBtn"]') ||
-              document.querySelector('[class*="modification-name"]') ||
-              document.querySelector('h1');
+                         document.querySelector('[class*="modification-name"]') ||
+                         document.querySelector('h1');
 
-        if (!targetEl) return;
-
-        const existingBtn = targetEl.parentNode?.querySelector('button[textContent*="Автоклик"]');
-        if (existingBtn) {
-            buttonInjected = true;
-            return;
-        }
+        if (!targetEl || !targetEl.parentNode) return;
 
         const btn = document.createElement('button');
+        btn.id = 'ac-global-start-btn'; // Фиксированный ID вместо нестандартных селекторов
         btn.type = 'button';
         btn.textContent = '🚀 Автоклик';
         btn.style.cssText = `
-        margin-left: 8px; padding: 4px 10px; background-color: #00aaff;
-        color: #ffffff; border: none; border-radius: 4px; cursor: pointer;
-        font-size: 12px; font-weight: bold; vertical-align: middle; z-index: 9999;
-    `;
+            margin-left: 8px; padding: 4px 10px; background-color: #00aaff;
+            color: #ffffff; border: none; border-radius: 4px; cursor: pointer;
+            font-size: 12px; font-weight: bold; vertical-align: middle; z-index: 9999;
+        `;
 
         btn.addEventListener('click', async (e) => {
             e.preventDefault();
@@ -712,8 +707,8 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
 
             try {
                 const catalogSpan = document.querySelector('span.styles-module-size_s-e9rn2') ||
-                      document.querySelector('span[data-marker="modification/select-text"]') ||
-                      document.querySelector('h1');
+                                     document.querySelector('span[data-marker="modification/select-text"]') ||
+                                     document.querySelector('h1');
                 const catalogText = catalogSpan ? catalogSpan.textContent.trim() : null;
 
                 if (!catalogText) {
@@ -799,9 +794,7 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
                                 userSelectedValue = await promptUserForCustomValue(fieldName, options);
 
                                 if (userSelectedValue === null) {
-                                    btn.textContent = '🚀 Автоклик';
-                                    btn.disabled = false;
-                                    return;
+                                    return; // Прерываем процесс, finally вернет кнопку в активное состояние
                                 }
                             }
                         }
@@ -898,28 +891,24 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
             }
         });
 
-        if (targetEl.parentNode) {
-            targetEl.parentNode.insertBefore(btn, targetEl.nextSibling);
-            buttonInjected = true;
-        }
+        targetEl.parentNode.insertBefore(btn, targetEl.nextSibling);
     }
 
-    let lastHref = window.location.href;
-    const urlObserver = new MutationObserver(() => {
-        if (window.location.href !== lastHref) {
-            lastHref = window.location.href;
-            buttonInjected = false;
-            injectButton();
-        }
-    });
-    urlObserver.observe(document.head, { childList: true, subtree: true });
-
+    // Слушатель изменений DOM (MutationObserver)
     const observer = new MutationObserver(() => {
         injectButton();
     });
 
-    observer.observe(document.body, { childList: true, subtree: true });
+    // Наблюдаем за document.body
+    if (document.body) {
+        observer.observe(document.body, { childList: true, subtree: true });
+    } else {
+        document.addEventListener('DOMContentLoaded', () => {
+            observer.observe(document.body, { childList: true, subtree: true });
+        });
+    }
 
+    // Первичный запуск
     injectButton();
 }
 
