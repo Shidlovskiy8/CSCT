@@ -14,14 +14,14 @@
       "category": "Helpdesk",
       "description": "Встраивает кнопку поиска и модальное окно на страницах тикетов",
       "script_url": "search_in_catalogs.js",
-      "auto_run": true
+      "auto_run": false
     },
     {
       "id": "id_by_value_auto",
       "title": "Поиск ID комплектации",
       "description": "Поиск ID в БД через n8n на страницах автокаталога",
       "script_url": "id_by_value_auto.js",
-      "auto_run": true
+      "auto_run": false
     }
   ]
 }
