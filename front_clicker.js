@@ -928,14 +928,14 @@
     // =================================================================
     if (window.location.hostname.includes('avito.ru') && window.location.pathname.includes('/additem')) {
     
-        const isActive = localStorage.getItem('autoclick_active', false) || localStorage.getItem('ac_autoclick_active') === 'true';
+        const isActive = localStorage.getItem('autoclick_active') === 'true' || localStorage.getItem('ac_autoclick_active') === 'true';
         if (!isActive) return;
     
         async function runPipeline() {
             ScrollLock.lock();
     
             try {
-                await localStorage.setItem('autoclick_active', false);
+                localStorage.removeItem('autoclick_active');
                 localStorage.removeItem('ac_autoclick_active');
     
                 let selectedCatalog = localStorage.getItem('selected_catalog', null) || localStorage.getItem('ac_selected_catalog');
