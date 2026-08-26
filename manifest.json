@@ -7,6 +7,14 @@
       "category": "Тест",
       "description": "Показывает всплывающее окно на странице",
       "script_url": "hello_script.js"
+    },
+    {
+      "id": "search_in_catalogs",
+      "title": "Поиск модификаций в catalogs",
+      "category": "Helpdesk",
+      "description": "Встраивает кнопку поиска и модальное окно на страницах тикетов",
+      "script_url": "search_in_catalogs.js",
+      "auto_run": true
     }
   ]
 }
