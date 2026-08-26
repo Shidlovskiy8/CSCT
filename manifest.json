@@ -1,0 +1,12 @@
+{
+  "version": "1.0.0",
+  "modules": [
+    {
+      "id": "hello_alert",
+      "title": "Приветственное окно",
+      "category": "Тест",
+      "description": "Показывает всплывающее окно на странице",
+      "script_url": "hello_script.js"
+    }
+  ]
+}
