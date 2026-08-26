@@ -14,6 +14,13 @@
       "description": "Поиск ID в БД через n8n на страницах автокаталога",
       "script_url": "id_by_value_auto.js",
       "auto_run": false
+    },
+    {
+      "id": "hello_script",
+      "title": "hello_script",
+      "description": "hello_script",
+      "script_url": "hello_script.js",
+      "auto_run": false
     }
   ]
 }
