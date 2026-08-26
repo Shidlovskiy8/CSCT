@@ -877,10 +877,10 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
                 }
 
                 const jsonFields = JSON.stringify(dynamicValues);
-                await localStorage.setItem('selected_catalog', catalogText);
-                await localStorage.setItem('extracted_fields', jsonFields);
-                await localStorage.setItem('autoclick_active', true);
-
+                localStorage.setItem('selected_catalog', catalogText);
+                localStorage.setItem('extracted_fields', jsonFields);
+                localStorage.setItem('autoclick_active', 'true');
+                
                 try {
                     localStorage.setItem('ac_selected_catalog', catalogText);
                     localStorage.setItem('ac_extracted_fields', jsonFields);
