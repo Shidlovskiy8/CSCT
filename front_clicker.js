@@ -875,12 +875,15 @@
             await copyToClipboard(clipboardLines.join('\n'));
           }
 
-          const jsonFields = JSON.stringify(dynamicValues);
-          Storage.set('selected_catalog', catalogText);
-          Storage.set('extracted_fields', jsonFields);
-          Storage.set('autoclick_active', true);
-
-          window.open('https://www.avito.ru/additem', '_blank');
+          // Передаем данные через postMessage в content.js для сохранения в chrome.storage.local
+          window.postMessage({
+            type: 'SET_AUTOCLICK_DATA',
+            payload: {
+              ac_selected_catalog: catalogText,
+              ac_extracted_fields: JSON.stringify(dynamicValues),
+              ac_autoclick_active: true
+            }
+          }, '*');
 
         } catch (err) {
           console.error("[AutoClicker Error]", err);
@@ -914,8 +917,26 @@
 
   } else if (host.includes('avito.ru') && path.includes('/additem')) {
 
-    const isActive = Storage.get('autoclick_active', false);
-    if (!isActive) return;
+      // Слушаем команду на старт от content.js
+  window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'START_AUTOCLICK_PIPELINE') {
+      const { selectedCatalog, extractedFields } = event.data;
+      
+      // Небольшая задержка для завершения рендера React
+      setTimeout(() => {
+        runPipeline(selectedCatalog, extractedFields);
+      }, 500);
+    }
+  });
+  
+  // Запрашиваем данные у content.js после загрузки DOM
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => window.postMessage({ type: 'GET_AUTOCLICK_DATA' }, '*'), 800);
+    });
+  } else {
+    setTimeout(() => window.postMessage({ type: 'GET_AUTOCLICK_DATA' }, '*'), 800);
+  }
 
     async function runPipeline() {
       ScrollLock.lock();
