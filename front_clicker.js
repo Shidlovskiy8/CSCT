@@ -67,12 +67,25 @@ class DebugUI {
         this.logEl = null;
         this.fieldsEl = null;
         this.isCollapsed = false;
-        this.init();
+        
+        // Безопасный запуск после загрузки DOM
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.init());
+        } else {
+            this.init();
+        }
     }
 
     init() {
-        if (document.getElementById('autoclick-debug-ui')) {
-            this.container = document.getElementById('autoclick-debug-ui');
+        if (!document.body) {
+            setTimeout(() => this.init(), 100);
+            return;
+        }
+
+        // Если элемент уже был на странице — переподключаемся
+        const existingContainer = document.getElementById('autoclick-debug-ui');
+        if (existingContainer) {
+            this.container = existingContainer;
             this.statusEl = document.getElementById('ac-ui-status');
             this.logEl = document.getElementById('ac-ui-log');
             this.fieldsEl = document.getElementById('ac-ui-fields');
@@ -82,33 +95,38 @@ class DebugUI {
         this.container = document.createElement('div');
         this.container.id = 'autoclick-debug-ui';
 
+        // Максимальный z-index и защита от перехвата pointer-events
         this.container.style.cssText = `
-        position: fixed; top: 0; right: 0; width: 360px; height: 100vh;
-        background: #181825; color: #cdd6f4;
-        font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
-        font-size: 11px; box-shadow: -8px 0 24px rgba(0,0,0,0.3);
-        border-left: 1px solid #313244; z-index: 999999; padding: 12px;
-        box-sizing: border-box; line-height: 1.4; display: flex;
-        flex-direction: column; gap: 8px; transition: transform 0.25s ease, width 0.25s ease;
-    `;
+            position: fixed !important; top: 0 !important; right: 0 !important; 
+            width: 360px !important; height: 100vh !important;
+            background: #181825 !important; color: #cdd6f4 !important;
+            font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace !important;
+            font-size: 11px !important; box-shadow: -8px 0 24px rgba(0,0,0,0.5) !important;
+            border-left: 1px solid #313244 !important; z-index: 2147483647 !important; 
+            padding: 12px !important; box-sizing: border-box !important; 
+            line-height: 1.4 !important; display: flex !important;
+            flex-direction: column !important; gap: 8px !important; 
+            transition: transform 0.25s ease, width 0.25s ease !important;
+            pointer-events: auto !important;
+        `;
 
         this.container.innerHTML = `
-        <div style="font-weight: 600; border-bottom: 1px solid #313244; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; color: #89b4fa; flex-shrink: 0;">
-            <span>⚡ Автокликер <span style="font-size: 9px; opacity: 0.7;">v8.60</span></span>
-            <div style="display: flex; gap: 8px; align-items: center;">
-                <span id="ac-ui-status" style="font-size: 10px; background: #2a2b3d; padding: 2px 6px; border-radius: 4px; color: #f9e2af; border: 1px solid #45475a;">ИНИЦИАЛИЗАЦИЯ</span>
-                <button id="ac-ui-toggle" title="Свернуть/Развернуть" style="background: #313244; color: #a6adc8; border: none; width: 20px; height: 20px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center;">—</button>
+            <div style="font-weight: 600; border-bottom: 1px solid #313244; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; color: #89b4fa; flex-shrink: 0;">
+                <span>⚡ Автокликер <span style="font-size: 9px; opacity: 0.7;">v8.60</span></span>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <span id="ac-ui-status" style="font-size: 10px; background: #2a2b3d; padding: 2px 6px; border-radius: 4px; color: #f9e2af; border: 1px solid #45475a;">ИНИЦИАЛИЗАЦИЯ</span>
+                    <button id="ac-ui-toggle" title="Свернуть/Развернуть" style="background: #313244; color: #a6adc8; border: none; width: 20px; height: 20px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center;">—</button>
+                </div>
             </div>
-        </div>
 
-        <div id="ac-ui-content" style="display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0;">
-            <div style="font-size: 10px; font-weight: 600; color: #a6adc8; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.5px;">Лог действий:</div>
-            <div id="ac-ui-log" style="background: #11111b; padding: 8px; border-radius: 6px; flex: 1 1 60%; overflow-y: auto; color: #bac2de; font-size: 10px; border: 1px solid #1e1e2e; word-break: break-word;"></div>
+            <div id="ac-ui-content" style="display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0;">
+                <div style="font-size: 10px; font-weight: 600; color: #a6adc8; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.5px;">Лог действий:</div>
+                <div id="ac-ui-log" style="background: #11111b; padding: 8px; border-radius: 6px; flex: 1 1 60%; overflow-y: auto; color: #bac2de; font-size: 10px; border: 1px solid #1e1e2e; word-break: break-word;"></div>
 
-            <div style="font-size: 10px; font-weight: 600; color: #a6adc8; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.5px;">Переданный стек параметров:</div>
-            <div id="ac-ui-fields" style="background: #11111b; padding: 8px; border-radius: 6px; flex: 1 1 40%; overflow-y: auto; color: #94e2d5; font-size: 10px; border: 1px solid #1e1e2e; word-break: break-word;">Ожидание...</div>
-        </div>
-    `;
+                <div style="font-size: 10px; font-weight: 600; color: #a6adc8; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.5px;">Переданный стек параметров:</div>
+                <div id="ac-ui-fields" style="background: #11111b; padding: 8px; border-radius: 6px; flex: 1 1 40%; overflow-y: auto; color: #94e2d5; font-size: 10px; border: 1px solid #1e1e2e; word-break: break-word;">Ожидание...</div>
+            </div>
+        `;
 
         document.body.appendChild(this.container);
         this.statusEl = document.getElementById('ac-ui-status');
@@ -137,6 +155,7 @@ class DebugUI {
     }
 
     setStatus(statusText, color = '#f9e2af') {
+        if (!this.statusEl) this.init();
         if (this.statusEl) {
             this.statusEl.textContent = statusText;
             this.statusEl.style.color = color;
@@ -144,6 +163,7 @@ class DebugUI {
     }
 
     log(msg, color = '#bac2de') {
+        if (!this.logEl) this.init();
         if (this.logEl) {
             const time = new Date().toLocaleTimeString();
             const line = document.createElement('div');
@@ -157,7 +177,9 @@ class DebugUI {
     }
 
     setFields(fieldsArray) {
+        if (!this.fieldsEl) this.init();
         if (!this.fieldsEl) return;
+        
         if (!fieldsArray || fieldsArray.length === 0) {
             this.fieldsEl.innerHTML = '<i style="color:#f38ba8;">⚠️ Поля отсутствуют</i>';
             return;
