@@ -888,20 +888,25 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
                 }
 
                 const jsonFields = JSON.stringify(dynamicValues);
+
+                // Безопасное сохранение без выпадения ошибки
+                if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
+                    await chrome.storage.local.set({
+                        'selected_catalog': catalogText,
+                        'extracted_fields': jsonFields,
+                        'autoclick_active': true
+                    });
+                } else {
+                    // Резервное сохранение в localStorage страницы
+                    try {
+                        localStorage.setItem('ac_selected_catalog', catalogText);
+                        localStorage.setItem('ac_extracted_fields', jsonFields);
+                        localStorage.setItem('ac_autoclick_active', 'true');
+                    } catch(e) {
+                        console.error("Не удалось сохранить данные в localStorage", e);
+                    }
+                }
                 
-                // ИСПРАВЛЕНО: Запись в chrome.storage с безопасным Promise API
-                await chrome.storage.local.set({
-                    'selected_catalog': catalogText,
-                    'extracted_fields': jsonFields,
-                    'autoclick_active': true
-                });
-
-                try {
-                    localStorage.setItem('ac_selected_catalog', catalogText);
-                    localStorage.setItem('ac_extracted_fields', jsonFields);
-                    localStorage.setItem('ac_autoclick_active', 'true');
-                } catch(e) {}
-
                 window.open('https://www.avito.ru/additem', '_blank');
 
             } catch (err) {
