@@ -17,24 +17,10 @@
       "auto_run": true
     },
     {
-      "id": "front_clicker_helpers",
-      "title": "Front Clicker: Вспомогательные функции",
-      "description": "Базовые утилиты и хелперы",
-      "script_url": "front_clicker/helpers.js",
-      "auto_run": true
-    },
-    {
-      "id": "front_clicker_catalogs",
-      "title": "Front Clicker: Справочники и каталоги",
-      "description": "Данные и сопоставления категорий/характеристик",
-      "script_url": "front_clicker/catalogs.js",
-      "auto_run": true
-    },
-    {
-      "id": "front_clicker_additem",
-      "title": "Front Clicker: Заполнение объявлений",
-      "description": "Основная логика кликера и автозаполнения форм",
-      "script_url": "front_clicker/additem.js",
+      "id": "front_clicker",
+      "title": "Front Clicker (Автокликер)",
+      "description": "Модуль автозаполнения форм Avito",
+      "script_url": "front_clicker.js",
       "auto_run": true
     }
   ]
