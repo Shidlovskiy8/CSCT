@@ -6,17 +6,33 @@ const TARGET_MAP = {};
 // Безопасное чтение (Chrome Storage -> fallback на localStorage)
 async function getStorageData(keys) {
     return new Promise((resolve) => {
+        let extensionData = {};
+        
+        // 1. Пытаемся прочитать из chrome.storage
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-            chrome.storage.local.get(keys, (res) => resolve(res || {}));
+            chrome.storage.local.get(keys, (res) => {
+                extensionData = res || {};
+                combineAndResolve();
+            });
         } else {
-            const result = {};
+            combineAndResolve();
+        }
+
+        // 2. Объединяем с localStorage (приоритет у непустых значений)
+        function combineAndResolve() {
+            const finalData = {};
             keys.forEach(key => {
-                const val = localStorage.getItem(`ac_${key}`) || localStorage.getItem(key);
-                if (val !== null) {
-                    result[key] = val;
+                const localVal = localStorage.getItem(`ac_${key}`) || localStorage.getItem(key);
+                const chromeVal = extensionData[key];
+
+                // Приоритет отдаем значению из chrome.storage, если оно есть, иначе берем из localStorage
+                if (chromeVal !== undefined && chromeVal !== null) {
+                    finalData[key] = chromeVal;
+                } else if (localVal !== null) {
+                    finalData[key] = localVal;
                 }
             });
-            resolve(result);
+            resolve(finalData);
         }
     });
 }
