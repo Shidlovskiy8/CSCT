@@ -21,13 +21,13 @@
     const WEBHOOK_URL = 'https://bpa-n8n-stage.k.avito.ru/webhook/d1022c79-45b8-4971-9712-53ccd03cbd25';
     const API_KEY = ''; 
 
-    // 1. СОЗДАНИЕ КНОПКИ (стиль из вашего кода)
+    // 1. СОЗДАНИЕ КНОПКИ
     function createInlineButton() {
         const btn = document.createElement('button');
         btn.id = BUTTON_ID;
         btn.type = 'button';
         btn.textContent = '🚀 Автоклик';
-        btn.title = 'Отправить параметры на вебхук';
+        btn.title = 'Отправить все параметры на вебхук';
         
         btn.style.cssText = `
             margin-left: 8px; 
@@ -53,7 +53,7 @@
         return btn;
     }
 
-    // 2. МОДАЛЬНОЕ ОКНО
+    // 2. МОДАЛЬНОЕ ОКНО (убрали, теперь сразу отправка)
     const modalOverlay = document.createElement('div');
     Object.assign(modalOverlay.style, {
         position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
@@ -69,112 +69,136 @@
             border: 1px solid #313244; display: flex; flex-direction: column; gap: 12px;
         ">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h3 style="margin: 0; font-size: 15px; color: #cdd6f4;">Поиск ID для комплектации в БД</h3>
+                <h3 style="margin: 0; font-size: 15px; color: #cdd6f4;">Отправка данных...</h3>
                 <span id="tm-close" style="cursor: pointer; font-size: 18px; color: #a6adc8;">✕</span>
             </div>
 
-            <textarea id="tm-input" placeholder="Введите комплектацию для поиска ID..." rows="4" style="
-                width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px;
-                background: #11111b; color: #cdd6f4; border: 1px solid #45475a;
-                font-size: 13px; outline: none; resize: vertical;
-            "></textarea>
-
-            <div id="tm-response-container" style="display: none; flex-direction: column; gap: 6px;">
-                <span style="font-size: 12px; font-weight: 600; color: #a6e3a1;">📥 Найденные ID:</span>
+            <div id="tm-response-container" style="flex-direction: column; gap: 6px;">
+                <span style="font-size: 12px; font-weight: 600; color: #a6e3a1;">📥 Ответ сервера:</span>
                 <div id="tm-response-output" style="
                     background: #11111b; border: 1px solid #45475a; border-radius: 8px;
-                    padding: 10px; font-size: 12px; color: #a6adc8; max-height: 180px;
+                    padding: 10px; font-size: 12px; color: #a6adc8; max-height: 300px;
                     overflow-y: auto; white-space: pre-wrap; font-family: monospace;
                 "></div>
             </div>
 
-            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;">
+            <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
                 <button id="tm-cancel" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #45475a; background: transparent; color: #cdd6f4; cursor: pointer;">Закрыть</button>
-                <button id="tm-submit" style="padding: 6px 16px; border-radius: 6px; border: none; background: #89b4fa; color: #11111b; font-weight: 600; cursor: pointer;">Отправить</button>
             </div>
         </div>
     `;
 
-    const input = modalOverlay.querySelector('#tm-input');
-    const submitBtn = modalOverlay.querySelector('#tm-submit');
-    const cancelBtn = modalOverlay.querySelector('#tm-cancel');
     const closeBtn = modalOverlay.querySelector('#tm-close');
-    const responseBox = modalOverlay.querySelector('#tm-response-container');
+    const cancelBtn = modalOverlay.querySelector('#tm-cancel');
     const responseOutput = modalOverlay.querySelector('#tm-response-output');
-
-    function openModal() {
-        const sel = window.getSelection().toString();
-        if (sel && !input.value) input.value = sel;
-        modalOverlay.style.display = 'flex';
-        input.focus();
-    }
 
     function closeModal() {
         modalOverlay.style.display = 'none';
-        responseBox.style.display = 'none';
         responseOutput.innerText = '';
-        submitBtn.disabled = false;
-        submitBtn.innerText = 'Отправить';
     }
 
     cancelBtn.addEventListener('click', closeModal);
     closeBtn.addEventListener('click', closeModal);
 
-    submitBtn.addEventListener('click', async () => {
-        const text = input.value.trim();
-        if (!text) return;
+    // 3. СБОР ДАННЫХ ИЗ КОНТЕЙНЕРА
+    function collectParamsData() {
+        const params = {};
+        const modificationId = document.querySelector('[data-marker="modification-name/label"]')?.textContent.replace('Модификация:', '').trim() || '';
+        
+        // Собираем все параметры из списка
+        document.querySelectorAll('div[data-marker="modification/param"]').forEach(row => {
+            const nameLink = row.querySelector('a[data-marker="modification/param-name-link"]');
+            if (!nameLink) return;
 
-        submitBtn.disabled = true;
-        submitBtn.innerText = '⏳ Обработка...';
-        responseBox.style.display = 'none';
+            const paramName = nameLink.textContent.trim();
+            
+            // Собираем все значения для этого параметра (может быть несколько)
+            const values = [];
+            const valueLinks = row.querySelectorAll('a[data-marker="modification/value-name-link"]');
+            
+            if (valueLinks.length > 0) {
+                valueLinks.forEach(link => {
+                    const val = link.textContent.trim();
+                    if (val) values.push(val);
+                });
+            } else {
+                // Если нет ссылок, берём текст из контейнера значений
+                const valContainer = row.querySelector('[class*="valueList"], [class*="valueLabel"]');
+                if (valContainer) {
+                    const val = valContainer.textContent.trim();
+                    if (val) values.push(val);
+                }
+            }
 
-        const headers = { 'Content-Type': 'application/json' };
-        if (API_KEY) headers['X-API-Key'] = API_KEY;
+            if (values.length > 0) {
+                params[paramName] = values.length === 1 ? values[0] : values;
+            }
+        });
+
+        return {
+            modification_id: modificationId,
+            url: window.location.href,
+            title: document.title,
+            params: params,
+            params_count: Object.keys(params).length
+        };
+    }
+
+    // 4. ОБРАБОТЧИК КЛИКА
+    async function handleButtonClick() {
+        const btn = document.getElementById(BUTTON_ID);
+        if (!btn) return;
+
+        const originalText = btn.textContent;
+        btn.textContent = '⏳ Сбор данных...';
+        btn.disabled = true;
 
         try {
+            // Собираем данные
+            const data = collectParamsData();
+            
+            console.log('[TM] Собранные данные:', data);
+
+            // Отправляем на вебхук
+            const headers = { 'Content-Type': 'application/json' };
+            if (API_KEY) headers['X-API-Key'] = API_KEY;
+
             const res = await fetch(WEBHOOK_URL, {
                 method: 'POST',
                 headers: headers,
-                body: JSON.stringify({
-                    text: text,
-                    url: window.location.href,
-                    title: document.title
-                })
+                body: JSON.stringify(data)
             });
 
-            submitBtn.disabled = false;
-            submitBtn.innerText = 'Отправить';
-            responseBox.style.display = 'flex';
-
+            // Показываем модальное окно с результатом
+            modalOverlay.style.display = 'flex';
             const responseText = await res.text();
 
             if (res.ok) {
                 try {
                     const json = JSON.parse(responseText);
-                    responseOutput.innerText = typeof json === 'object'
-                        ? JSON.stringify(json, null, 2)
-                        : json;
+                    responseOutput.innerText = `✅ Успешно!\n\nОтправлено параметров: ${data.params_count}\n\nОтвет сервера:\n` + 
+                        (typeof json === 'object' ? JSON.stringify(json, null, 2) : json);
                 } catch (e) {
-                    responseOutput.innerText = responseText || '(Пустой ответ)';
+                    responseOutput.innerText = `✅ Успешно!\n\nОтправлено параметров: ${data.params_count}\n\nОтвет сервера:\n${responseText}`;
                 }
             } else {
-                responseOutput.innerText = `Ошибка ${res.status}:\n${responseText}`;
+                responseOutput.innerText = `❌ Ошибка ${res.status}:\n${responseText}`;
             }
         } catch (err) {
-            submitBtn.disabled = false;
-            submitBtn.innerText = 'Отправить';
-            responseBox.style.display = 'flex';
-            responseOutput.innerText = `Сетевая ошибка: ${err.message}`;
+            modalOverlay.style.display = 'flex';
+            responseOutput.innerText = `❌ Сетевая ошибка: ${err.message}`;
+        } finally {
+            btn.textContent = originalText;
+            btn.disabled = false;
         }
-    });
+    }
 
-    // 3. ВСТРАИВАНИЕ КНОПКИ
+    // 5. ВСТРАИВАНИЕ КНОПКИ
     function injectButton() {
         if (document.getElementById(BUTTON_ID)) {
             return;
         }
 
-        // Ищем кнопку historyBtn как целевой элемент для вставки
         const targetEl = document.querySelector('button[data-marker="modification-name/historyBtn"]') ||
                          document.querySelector('[data-marker="modification-name/label"]') ||
                          document.querySelector('[class*="modification-name"]');
@@ -182,9 +206,8 @@
         if (!targetEl) return;
 
         const btn = createInlineButton();
-        btn.addEventListener('click', openModal);
+        btn.addEventListener('click', handleButtonClick);
 
-        // Вставляем после целевого элемента
         if (targetEl.parentNode) {
             targetEl.parentNode.insertBefore(btn, targetEl.nextSibling);
         }
@@ -205,7 +228,7 @@
     setTimeout(injectButton, 1200);
     setTimeout(injectButton, 2000);
 
-    // Наблюдатель за изменениями URL
+    // Наблюдатель за изменением URL
     let lastHref = window.location.href;
     const urlObserver = new MutationObserver(() => {
         if (window.location.href !== lastHref) {
