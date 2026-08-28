@@ -3,6 +3,27 @@
 
 const TARGET_MAP = {};
 
+// Слушатель событий от content.js для обхода CSP
+window.addEventListener('message', (event) => {
+  if (!event.data || typeof event.data !== 'object') return;
+
+  if (event.data.type === 'AUTOCLICK_INIT_CONFIG') {
+    window.__AUTOCLICK_CONFIG__ = event.data.config;
+    try {
+      localStorage.setItem('ac_autoclick_active', 'true');
+      localStorage.setItem('autoclick_active', 'true');
+      if (event.data.config.catalog) localStorage.setItem('ac_selected_catalog', event.data.config.catalog);
+      if (event.data.config.fields) localStorage.setItem('ac_extracted_fields', typeof event.data.config.fields === 'string' ? event.data.config.fields : JSON.stringify(event.data.config.fields));
+    } catch(e) {}
+  }
+
+  if (event.data.type === 'AUTOCLICK_TRIGGER_PIPELINE') {
+    if (typeof runPipeline === 'function') {
+      runPipeline();
+    }
+  }
+});
+
 // Безопасное чтение (Chrome Storage -> fallback на localStorage)
 async function getStorageData(keys) {
     return new Promise((resolve) => {
