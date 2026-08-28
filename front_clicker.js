@@ -1,469 +1,684 @@
-(function () {
-  'use strict';
+(function() {
+'use strict';
 
-  // =================================================================
-  // 0. ОБЩИЕ ВСПОМОГАТЕЛЬНЫЕ УТИЛИТЫ И ИНСТРУМЕНТЫ
-  // =================================================================
+const TARGET_MAP = {};
 
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// =================================================================
+// МОДУЛЬ БЛОКИРОВКИ РУЧНОГО СКРОЛЛА
+// =================================================================
+class ScrollLock {
+    static isLocked = false;
+    static originalOverflow = '';
 
-  function normalizeText(str) {
-    if (!str) return '';
-    return String(str).toLowerCase().replace(/\s+/g, ' ').trim();
-  }
-
-  function parseTargetText(val) {
-    if (typeof val === 'string') return val.trim();
-    if (val && typeof val === 'object' && val.text) return val.text.trim();
-    return '';
-  }
-
-  function resolveTarget(val) {
-    if (typeof val === 'string') return val.trim();
-    if (val && typeof val === 'object') return val.target || val.text || val.value || '';
-    return String(val || '').trim();
-  }
-
-  // Залочивание скролла во время автокликов
-  const ScrollLock = {
-    lock() {
-      document.body.style.overflow = 'hidden';
-    },
-    unlock() {
-      document.body.style.overflow = '';
-    }
-  };
-
-  // Эмуляция полного клика мыши по элементу DOM
-  async function triggerFullClick(element) {
-    if (!element) return;
-    element.scrollIntoView({ block: 'center', behavior: 'instant' });
-
-    const events = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'];
-    events.forEach((eventType) => {
-      element.dispatchEvent(new MouseEvent(eventType, {
-        bubbles: true,
-        cancelable: true,
-        view: window
-      }));
-    });
-  }
-
-  // Ожидание появления элемента/состояния в DOM
-  async function waitForFieldReady(predicate, timeout = 2000, step = 100) {
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeout) {
-      const res = predicate();
-      if (res) return res;
-      await sleep(step);
-    }
-    return null;
-  }
-
-  async function safeResetDropdownState() {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await sleep(100);
-  }
-
-  // Заглушка получения внешнего реестра (маршрутов categories/steps)
-  async function fetchTableData() {
-    try {
-      return { route: [], fields: [] };
-    } catch (e) {
-      return { route: [], fields: [] };
-    }
-  }
-
-  // Автоматическое заполнение найденного поля формы
-  async function fillFormField(field) {
-    try {
-      const targetNorm = normalizeText(field.targetValue);
-
-      // 1. Поиск радио-кнопок или текстовых кнопок выбора
-      const radioBtn = Array.from(document.querySelectorAll('label, button, div[role="radio"]'))
-        .find(el => normalizeText(el.innerText || el.textContent) === targetNorm);
-
-      if (radioBtn) {
-        await triggerFullClick(radioBtn);
-        return true;
-      }
-
-      // 2. Поиск инпутов / выпадающих списков
-      const inputs = Array.from(document.querySelectorAll('input, select'));
-      for (const input of inputs) {
-        const placeholder = normalizeText(input.placeholder || '');
-        const ariaLabel = normalizeText(input.getAttribute('aria-label') || '');
-        const fieldNameNorm = normalizeText(field.name);
-
-        if (placeholder.includes(fieldNameNorm) || ariaLabel.includes(fieldNameNorm)) {
-          input.focus();
-          input.value = field.targetValue;
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          input.dispatchEvent(new Event('change', { bubbles: true }));
-          await sleep(100);
-          return true;
+    static preventDefaultHandler(e) {
+        if (e.target && e.target.closest('#autoclick-debug-ui')) {
+            return;
         }
-      }
-
-      return false;
-    } catch (e) {
-      return false;
-    }
-  }
-
-
-  // =================================================================
-  // 1. ТОЧКА ВХОДА №1: CATALOGS.AVITO.RU (Первый блок без изменений)
-  // =================================================================
-  if (window.location.hostname.includes('catalogs.avito.ru')) {
-
-    function getSelectedCatalog() {
-      const titleEl = document.querySelector('[class*="title-root-"]') || document.querySelector('h1');
-      return titleEl ? titleEl.textContent.trim() : '';
+        e.preventDefault();
     }
 
-    function parseCatalogFields() {
-      const fields = [];
-      const labels = document.querySelectorAll('[class*="grid-item-label-"]');
-      
-      labels.forEach(labelEl => {
-        const parent = labelEl.parentElement;
-        if (!parent) return;
-        const valEl = parent.querySelector('[class*="grid-item-value-"]');
-        if (labelEl && valEl) {
-          const name = labelEl.textContent.trim();
-          const value = valEl.textContent.trim();
-          if (name && value) {
-            fields.push({ name, value, type: 'text' });
-          }
+    static preventKeysHandler(e) {
+        if (e.target && e.target.closest('#autoclick-debug-ui')) return;
+        const keys = [32, 33, 34, 35, 36, 37, 38, 39, 40];
+        if (keys.includes(e.keyCode)) {
+            e.preventDefault();
         }
-      });
-
-      return fields;
     }
 
-    async function handleStartButtonClick() {
-      const selectedCatalog = getSelectedCatalog();
-      const extractedFields = parseCatalogFields();
+    static lock() {
+        if (this.isLocked) return;
+        this.isLocked = true;
+        this.originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
 
-      if (!selectedCatalog) {
-        alert('Не удалось определить текущую категорию!');
-        return;
-      }
-
-      const payload = {
-        autoclick_active: true,
-        selected_catalog: selectedCatalog,
-        extracted_fields: JSON.stringify(extractedFields)
-      };
-
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        await chrome.storage.local.set(payload);
-      }
-      localStorage.setItem('ac_autoclick_active', 'true');
-      localStorage.setItem('ac_selected_catalog', selectedCatalog);
-      localStorage.setItem('ac_extracted_fields', JSON.stringify(extractedFields));
-
-      window.location.href = 'https://www.avito.ru/additem';
+        window.addEventListener('wheel', this.preventDefaultHandler, { passive: false });
+        window.addEventListener('touchmove', this.preventDefaultHandler, { passive: false });
+        window.addEventListener('keydown', this.preventKeysHandler, { passive: false });
     }
 
-    function injectAutoclickButton() {
-      if (document.getElementById('ac-start-btn')) return;
+    static unlock() {
+        if (!this.isLocked) return;
+        this.isLocked = false;
+        document.body.style.overflow = this.originalOverflow;
 
-      const targetContainer = document.querySelector('[class*="desktop-controls-"]');
-      if (!targetContainer) return;
+        window.removeEventListener('wheel', this.preventDefaultHandler);
+        window.removeEventListener('touchmove', this.preventDefaultHandler);
+        window.removeEventListener('keydown', this.preventKeysHandler);
+    }
+}
 
-      const btn = document.createElement('button');
-      btn.id = 'ac-start-btn';
-      btn.className = 'button-button-21p5n button-size-m-155W2 button-primary-3QWv5';
-      btn.type = 'button';
-      btn.style.marginLeft = '10px';
-      btn.innerHTML = '<span class="button-content-35f9k">⚡ Автоклик</span>';
-
-      btn.addEventListener('click', handleStartButtonClick);
-      targetContainer.appendChild(btn);
+class DebugUI {
+    constructor() {
+        this.container = null;
+        this.statusEl = null;
+        this.logEl = null;
+        this.fieldsEl = null;
+        this.isCollapsed = false;
+        this.init();
     }
 
-    // Инициализируем поиск контейнера строго при загрузке и через контролируемый интервал,
-    // чтобы кнопка не переносилась в другие контейнеры на странице
-    const catalogInitInterval = setInterval(() => {
-      if (document.getElementById('ac-start-btn')) {
-        clearInterval(catalogInitInterval);
-        return;
-      }
-      injectAutoclickButton();
-    }, 300);
-  }
+    init() {
+        if (document.getElementById('autoclick-debug-ui')) {
+            this.container = document.getElementById('autoclick-debug-ui');
+            this.statusEl = document.getElementById('ac-ui-status');
+            this.logEl = document.getElementById('ac-ui-log');
+            this.fieldsEl = document.getElementById('ac-ui-fields');
+            return;
+        }
 
-
-  // =================================================================
-  // 2. ТОЧКА ВХОДА №2: WWW.AVITO.RU/ADDITEM (Второй блок)
-  // =================================================================
-  if (window.location.hostname.includes('avito.ru') && window.location.pathname.includes('/additem')) {
-
-    // Класс UI консоли изолирован внутри второго блока
-    class DebugUI {
-      constructor() {
         this.container = document.createElement('div');
+        this.container.id = 'autoclick-debug-ui';
+
         this.container.style.cssText = `
-          position: fixed; top: 10px; right: 10px; width: 350px; max-height: 80vh;
-          background: rgba(40, 42, 54, 0.95); color: #f8f8f2; font-family: monospace;
-          font-size: 11px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-          z-index: 999999; display: flex; flex-direction: column; overflow: hidden;
-          border: 1px solid #6272a4;
-        `;
+        position: fixed; top: 0; right: 0; width: 360px; height: 100vh;
+        background: #181825; color: #cdd6f4;
+        font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+        font-size: 11px; box-shadow: -8px 0 24px rgba(0,0,0,0.3);
+        border-left: 1px solid #313244; z-index: 999999; padding: 12px;
+        box-sizing: border-box; line-height: 1.4; display: flex;
+        flex-direction: column; gap: 8px; transition: transform 0.25s ease, width 0.25s ease;
+    `;
 
-        this.header = document.createElement('div');
-        this.header.style.cssText = `
-          padding: 8px 12px; background: #44475a; font-weight: bold;
-          display: flex; justify-content: space-between; align-items: center;
-          border-bottom: 1px solid #6272a4;
-        `;
-        this.header.innerHTML = `<span>🚀 AutoClicker Debug</span><span id="ac-status" style="padding: 2px 6px; border-radius: 4px; background: #6272a4;">INIT</span>`;
-        this.container.appendChild(this.header);
+        this.container.innerHTML = `
+        <div style="font-weight: 600; border-bottom: 1px solid #313244; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; color: #89b4fa; flex-shrink: 0;">
+            <span>⚡ Автокликер <span style="font-size: 9px; opacity: 0.7;">v8.60</span></span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span id="ac-ui-status" style="font-size: 10px; background: #2a2b3d; padding: 2px 6px; border-radius: 4px; color: #f9e2af; border: 1px solid #45475a;">ИНИЦИАЛИЗАЦИЯ</span>
+                <button id="ac-ui-toggle" title="Свернуть/Развернуть" style="background: #313244; color: #a6adc8; border: none; width: 20px; height: 20px; border-radius: 4px; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center;">—</button>
+            </div>
+        </div>
 
-        this.logArea = document.createElement('div');
-        this.logArea.style.cssText = `
-          padding: 10px; overflow-y: auto; flex-grow: 1; display: flex;
-          flex-direction: column; gap: 4px; max-height: 300px;
-        `;
-        this.container.appendChild(this.logArea);
+        <div id="ac-ui-content" style="display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0;">
+            <div style="font-size: 10px; font-weight: 600; color: #a6adc8; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.5px;">Лог действий:</div>
+            <div id="ac-ui-log" style="background: #11111b; padding: 8px; border-radius: 6px; flex: 1 1 60%; overflow-y: auto; color: #bac2de; font-size: 10px; border: 1px solid #1e1e2e; word-break: break-word;"></div>
+
+            <div style="font-size: 10px; font-weight: 600; color: #a6adc8; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.5px;">Переданный стек параметров:</div>
+            <div id="ac-ui-fields" style="background: #11111b; padding: 8px; border-radius: 6px; flex: 1 1 40%; overflow-y: auto; color: #94e2d5; font-size: 10px; border: 1px solid #1e1e2e; word-break: break-word;">Ожидание...</div>
+        </div>
+    `;
 
         document.body.appendChild(this.container);
-      }
+        this.statusEl = document.getElementById('ac-ui-status');
+        this.logEl = document.getElementById('ac-ui-log');
+        this.fieldsEl = document.getElementById('ac-ui-fields');
 
-      setStatus(text, color = '#6272a4') {
-        const statusEl = this.container.querySelector('#ac-status');
-        if (statusEl) {
-          statusEl.textContent = text;
-          statusEl.style.background = color;
-          statusEl.style.color = '#fff';
-        }
-      }
+        const toggleBtn = document.getElementById('ac-ui-toggle');
+        const contentEl = document.getElementById('ac-ui-content');
 
-      setFields(fields) {
-        this.log(`Загружено полей: ${fields.length}`, '#bd93f9');
-      }
-
-      log(msg, color = '#f8f8f2') {
-        const item = document.createElement('div');
-        item.style.color = color;
-        item.style.wordBreak = 'break-word';
-        item.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-        this.logArea.appendChild(item);
-        this.logArea.scrollTop = this.logArea.scrollHeight;
-      }
+        toggleBtn.addEventListener('click', () => {
+            this.isCollapsed = !this.isCollapsed;
+            if (this.isCollapsed) {
+                contentEl.style.display = 'none';
+                this.container.style.height = 'auto';
+                this.container.style.width = '230px';
+                this.container.style.borderRadius = '0 0 0 8px';
+                toggleBtn.textContent = '☐';
+            } else {
+                contentEl.style.display = 'flex';
+                this.container.style.height = '100vh';
+                this.container.style.width = '360px';
+                this.container.style.borderRadius = '0';
+                toggleBtn.textContent = '—';
+            }
+        });
     }
 
-    async function checkIsActive() {
-      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        const res = await chrome.storage.local.get(['autoclick_active']);
-        if (res.autoclick_active) return true;
-      }
-      return localStorage.getItem('ac_autoclick_active') === 'true';
+    setStatus(statusText, color = '#f9e2af') {
+        if (this.statusEl) {
+            this.statusEl.textContent = statusText;
+            this.statusEl.style.color = color;
+        }
     }
 
-    async function runPipeline() {
-      const active = await checkIsActive();
-      if (!active) return;
-
-      ScrollLock.lock();
-      let ui = null;
-
-      try {
-        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-          await chrome.storage.local.set({ autoclick_active: false });
+    log(msg, color = '#bac2de') {
+        if (this.logEl) {
+            const time = new Date().toLocaleTimeString();
+            const line = document.createElement('div');
+            line.style.color = color;
+            line.style.marginBottom = '2px';
+            line.innerHTML = `<span style="color:#585b70;">[${time}]</span> ${msg}`;
+            this.logEl.appendChild(line);
+            this.logEl.scrollTop = this.logEl.scrollHeight;
         }
-        localStorage.removeItem('ac_autoclick_active');
-
-        let selectedCatalog = null;
-        let extractedFieldsRaw = '[]';
-
-        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-          const store = await chrome.storage.local.get(['selected_catalog', 'extracted_fields']);
-          selectedCatalog = store.selected_catalog;
-          extractedFieldsRaw = store.extracted_fields || '[]';
-        }
-
-        if (!selectedCatalog) {
-          selectedCatalog = localStorage.getItem('ac_selected_catalog');
-          extractedFieldsRaw = localStorage.getItem('ac_extracted_fields') || '[]';
-        }
-
-        let extractedFields = [];
-        try { extractedFields = JSON.parse(extractedFieldsRaw); } catch (e) { extractedFields = []; }
-
-        if (!selectedCatalog) return;
-
-        ui = new DebugUI();
-        ui.setStatus('ЗАПУСК', '#ffcc00');
-        ui.setFields(extractedFields);
-        ui.log(`Кликер запущен для категории: "${selectedCatalog}"`);
-
-        await safeResetDropdownState();
-
-        const anotherCategoryBtn = await waitForFieldReady(() => {
-          const btn = document.querySelector('button[data-marker="another-category"]');
-          if (btn) return btn;
-          const buttons = Array.from(document.querySelectorAll('button'));
-          return buttons.find(b => b.innerText && normalizeText(b.innerText).includes('другая категория'));
-        }, 1200);
-
-        if (anotherCategoryBtn) {
-          await triggerFullClick(anotherCategoryBtn);
-          ui.log('Клик "Другая категория"', '#50fa7b');
-          await sleep(200);
-        }
-
-        ui.setStatus('ЗАГРУЗКА', '#00aaff');
-        let responseData;
-        try {
-          responseData = await fetchTableData();
-          ui.log('Реестр категорий загружен', '#50fa7b');
-        } catch (err) {
-          ui.setStatus('ОШИБКА СЕТИ', '#ff5555');
-          ui.log(`❌ Ошибка загрузки данных: ${err}`, '#ff5555');
-          return;
-        }
-
-        const routeData = responseData.route || responseData;
-        const targetCatalogNorm = normalizeText(selectedCatalog);
-
-        let routeRow = Array.isArray(routeData) ? routeData.find(r => {
-          const cat = normalizeText(parseTargetText(r.Catalog || r.catalog));
-          return cat && (targetCatalogNorm.includes(cat) || cat.includes(targetCatalogNorm));
-        }) : null;
-
-        if (!routeRow) {
-          ui.setStatus('НЕ НАЙДЕНО', '#ff5555');
-          ui.log(`❌ Категория "${selectedCatalog}" не найдена в реестре!`, '#ff5555');
-          return;
-        }
-
-        const getSuggestValue = (val) => String(val || '').trim().toUpperCase() === 'TRUE';
-        const chain = [];
-
-        if (routeRow.category) {
-          chain.push({ name: 'category', value: resolveTarget(routeRow.category) });
-        }
-
-        const stepKeys = Object.keys(routeRow)
-          .filter(key => /^step\d+$/i.test(key))
-          .sort((a, b) => parseInt(a.replace(/\D/g, ''), 10) - parseInt(b.replace(/\D/g, ''), 10));
-
-        for (let i = 0; i < stepKeys.length; i++) {
-          const currentStepKey = stepKeys[i];
-          const stepNum = currentStepKey.replace(/\D/g, '');
-          const suggestKey = `suggest${stepNum}`;
-
-          if (getSuggestValue(routeRow[suggestKey])) {
-            const prevStep = chain[chain.length - 1];
-            if (prevStep) {
-              chain.push({ name: suggestKey, value: prevStep.value, isSuggest: true });
-            }
-          }
-
-          if (routeRow[currentStepKey]) {
-            chain.push({ name: currentStepKey, value: resolveTarget(routeRow[currentStepKey]), isSuggest: false });
-          }
-        }
-
-        for (let step of chain) {
-          const targetNorm = normalizeText(step.value);
-          ui.setStatus(`КЛИК ${step.name.toUpperCase()}`, '#00aaff');
-
-          if (step.isSuggest) {
-            ui.log(`Поиск подсказки (${step.name}): "${step.value}"...`);
-            const suggestElement = await waitForFieldReady(() => {
-              const spans = Array.from(document.querySelectorAll('span[style*="var(--theme-semantics-text-secondary)"]'));
-              return spans.find(el => normalizeText(el.innerText || el.textContent) === targetNorm);
-            }, 2000);
-
-            if (suggestElement) {
-              await triggerFullClick(suggestElement);
-              ui.log(`Выбрана подсказка (${step.name}): "${step.value}"`, '#50fa7b');
-              await sleep(200);
-            } else {
-              ui.log(`⚠️ Не найдена подсказка (${step.name}) для: "${step.value}"`, '#ffb86c');
-            }
-          } else {
-            ui.log(`Поиск категории: "${step.value}"...`);
-            const element = await waitForFieldReady(() => {
-              const buttons = Array.from(document.querySelectorAll('[data-marker="category-wizard/button"]'));
-              return buttons.find(el => normalizeText(el.innerText || el.textContent) === targetNorm);
-            }, 2000);
-
-            if (element) {
-              await triggerFullClick(element);
-              ui.log(`Выбрано: "${step.value}"`, '#50fa7b');
-              await sleep(200);
-            } else {
-              ui.log(`⚠️ Пропущен шаг ${step.name}: элемент "${step.value}" не найден`, '#ffb86c');
-            }
-          }
-        }
-
-        ui.setStatus('ПОДГОТОВКА ПОЛЕЙ', '#00aaff');
-        ui.log('--- КАТЕГОРИИ ВЫБРАНЫ, ПЕРЕХОД К ПОЛЯМ ---', '#00aaff');
-
-        if (extractedFields.length > 0) {
-          ui.log(`Запуск заполнения полей (всего: ${extractedFields.length})`);
-          ui.setStatus('ЗАПОЛНЕНИЕ ПОЛЕЙ', '#00aaff');
-
-          for (let i = 0; i < extractedFields.length; i++) {
-            const field = extractedFields[i];
-            let cleanVal = parseTargetText(field.value);
-            let isUsingDefault = false;
-
-            if (!cleanVal && field.default_value) {
-              cleanVal = parseTargetText(field.default_value) || String(field.default_value).trim();
-              isUsingDefault = true;
-            }
-
-            if (!cleanVal) {
-              ui.log(`⚠️ [${i + 1}/${extractedFields.length}] Пропущено поле "${field.name}" (нет значения)`, '#ffb86c');
-              continue;
-            }
-
-            const logTag = isUsingDefault ? ' [DEFAULT]' : '';
-            ui.log(`👉 [${i + 1}/${extractedFields.length}] Поле "${field.name}" (${field.type})${logTag} ➔ "${cleanVal}"`, '#f1fa8c');
-
-            if (i > 0) await sleep(150);
-
-            const fieldToFill = {
-              ...field,
-              targetValue: cleanVal,
-              isDefaultUsed: isUsingDefault
-            };
-
-            const success = await fillFormField(fieldToFill);
-
-            if (success) {
-              ui.log(`✅ [${i + 1}/${extractedFields.length}] Готово: "${field.name}"`, '#50fa7b');
-              if (isUsingDefault || field.name.toLowerCase().includes('тип') || field.name.toLowerCase().includes('марк')) {
-                ui.log(`⏳ Ожидание появления зависимых полей...`, '#00aaff');
-                await sleep(800);
-              }
-            } else {
-              ui.log(`❌ [${i + 1}/${extractedFields.length}] Не удалось заполнить: ${field.name}`, '#ff5555');
-            }
-            await sleep(100);
-          }
-        } else {
-          ui.log(`⚠️ Массив полей пуст!`, '#ffb86c');
-        }
-
-        ui.setStatus('УСПЕШНО', '#50fa7b');
-        ui.log('Все операции завершены! 🎉', '#50fa7b');
-      } finally {
-        ScrollLock.unlock();
-      }
+        console.log(`[AutoClicker] ${msg}`);
     }
 
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', runPipeline);
+    setFields(fieldsArray) {
+        if (!this.fieldsEl) return;
+        if (!fieldsArray || fieldsArray.length === 0) {
+            this.fieldsEl.innerHTML = '<i style="color:#f38ba8;">⚠️ Поля отсутствуют</i>';
+            return;
+        }
+        let html = '';
+        fieldsArray.forEach((f, idx) => {
+            const defBadge = f.isDefault ? ' <span style="color:#fab387;">[DEFAULT]</span>' : '';
+            html += `<div style="margin-bottom: 3px;"><strong style="color: #cba6f7;">[${idx+1}. ${f.type}] ${f.name || 'Поле ' + (idx+1)}${defBadge}:</strong> <span style="color: #f9e2af;">${f.target || 'N/A'}</span> ➔ <span style="color: #a6e3a1;">"${f.value}"</span></div>`;
+        });
+        this.fieldsEl.innerHTML = html;
+    }
+}
+
+let ui = null;
+
+function normalizeText(text) {
+    if (!text) return "";
+    return String(text)
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[—–-]/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function parseTargetText(rawText) {
+    if (!rawText) return "";
+    let str = String(rawText).trim();
+    if (str.includes('<') && str.includes('>')) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = str;
+        str = tempDiv.textContent.trim();
+    }
+    return str.replace(/^["']|["']$/g, '').trim();
+}
+
+function extractParamName(htmlString) {
+    if (!htmlString) return null;
+    const match = String(htmlString).match(/(?:id|name|marker|data-marker)=["']([^"']+)["']/i);
+    if (match && match[1]) {
+        return match[1].replace('/input', '').trim();
+    }
+    return parseTargetText(htmlString) || null;
+}
+
+function resolveTarget(rawName) {
+    if (!rawName) return "";
+    const clean = parseTargetText(rawName);
+    const lowerKey = clean.toLowerCase();
+    return TARGET_MAP[lowerKey] || clean;
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function copyToClipboard(text) {
+    if (typeof GM_setClipboard === 'function') {
+        GM_setClipboard(text);
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(err => {
+            console.error('Ошибка копирования в буфер обмена: ', err);
+        });
+    }
+}
+
+// =================================================================
+// ОЖИДАНИЕ: Поиск + проверка видимости, готовности и анимации
+// =================================================================
+function waitForFieldReady(findFn, timeout = 2500) {
+    return new Promise((resolve) => {
+        const interval = 50;
+        let elapsed = 0;
+        let lastRect = null;
+        let stableFrames = 0;
+
+        const timer = setInterval(() => {
+            const el = findFn();
+
+            if (el) {
+                const rect = el.getBoundingClientRect();
+                const isVisible = rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).visibility !== 'hidden';
+                const isDisabled = el.hasAttribute('disabled') || el.classList.contains('disabled');
+
+                if (isVisible && !isDisabled) {
+                    if (lastRect && lastRect.top === rect.top && lastRect.left === rect.left) {
+                        stableFrames++;
+                    } else {
+                        stableFrames = 0;
+                    }
+                    lastRect = rect;
+
+                    if (stableFrames >= 2) {
+                        clearInterval(timer);
+                        return resolve(el);
+                    }
+                }
+            }
+
+            elapsed += interval;
+            if (elapsed >= timeout) {
+                clearInterval(timer);
+                resolve(findFn() || null);
+            }
+        }, interval);
+    });
+}
+
+async function triggerFullClick(element) {
+    if (!element) return;
+    try {
+        element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+        element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        await sleep(20);
+        element.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+        element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+        element.click();
+    } catch (e) {
+        if (typeof element.click === 'function') element.click();
+    }
+}
+
+async function safeResetDropdownState() {
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+    document.body.click();
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+    }
+    await sleep(50);
+}
+
+function setNativeValue(element, value) {
+    const valueSetter = Object.getOwnPropertyDescriptor(element, 'value')?.set;
+    const prototype = Object.getPrototypeOf(element);
+    const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+
+    if (prototypeValueSetter && valueSetter !== prototypeValueSetter) {
+        prototypeValueSetter.call(element, value);
+    } else if (valueSetter) {
+        valueSetter.call(element, value);
     } else {
-      runPipeline();
+        element.value = value;
     }
-  }
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+const CACHE_TTL = 24 * 60 * 60 * 1000;
+
+function fetchTableData() {
+    return new Promise((resolve) => {
+        const cachedData = localStorage.getItem('avito_autoclick_cache');
+        const cachedTime = localStorage.getItem('avito_autoclick_time');
+        const now = Date.now();
+
+        if (cachedData && cachedTime && (now - cachedTime < CACHE_TTL)) {
+            try {
+                const parsed = JSON.parse(cachedData);
+                resolve(parsed);
+                updateCacheInBackground();
+                return;
+            } catch (e) {}
+        }
+
+        fetchFromServer().then(freshData => {
+            if (freshData) {
+                resolve(freshData);
+            } else if (cachedData) {
+                resolve(JSON.parse(cachedData));
+            } else {
+                resolve({ route: [], fields: [] });
+            }
+        });
+    });
+}
+
+async function fetchFromServer() {
+    const url = 'https://script.google.com/macros/s/AKfycbzSW3uYLSenlUnHKwni5FWANuhzsprGZXQs5T0FoLEA8bVMo9b7YqX0GLM1NiIZxzd25A/exec';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // Таймаут 10 секунд
+
+    try {
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+            const data = await response.json();
+            localStorage.setItem('avito_autoclick_cache', JSON.stringify(data));
+            localStorage.setItem('avito_autoclick_time', Date.now());
+            return data;
+        }
+    } catch (e) {
+        // Сработает при ошибке сети, таймауте или невалидном JSON
+    }
+
+    return null;
+}
+
+function updateCacheInBackground() {
+    fetchFromServer();
+}
+
+function findBestMatchingOption(items, targetValue) {
+    const targetNorm = normalizeText(targetValue);
+
+    let exact = items.find(el => normalizeText(el.innerText || el.textContent) === targetNorm);
+    if (exact) return exact;
+
+    const tokens = targetNorm.replace(/[()]/g, ' ').split(/\s+/).filter(t => t.length > 0);
+    if (tokens.length === 0) return null;
+
+    let bestItem = null;
+    let maxScore = 0;
+
+    items.forEach(el => {
+        const itemTxt = normalizeText(el.innerText || el.textContent);
+        let score = 0;
+
+        tokens.forEach(tok => {
+            if (itemTxt.includes(tok)) score += 1;
+        });
+
+        if (score > maxScore) {
+            maxScore = score;
+            bestItem = el;
+        }
+    });
+
+    return maxScore >= Math.ceil(tokens.length / 2) ? bestItem : null;
+}
+
+async function promptUserForCustomValue(fieldName, options) {
+    return new Promise((resolve) => {
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        z-index: 999999; background: #282a36; color: #f8f8f2; padding: 20px;
+        border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        font-family: sans-serif; min-width: 300px; border: 1px solid #6272a4;
+    `;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.innerHTML = '&times;';
+        closeBtn.type = 'button';
+        closeBtn.style.cssText = `
+        position: absolute; top: 10px; right: 12px; background: transparent;
+        border: none; color: #6272a4; font-size: 20px; font-weight: bold;
+        cursor: pointer; padding: 0; line-height: 1; outline: none;
+    `;
+        closeBtn.onmouseover = () => closeBtn.style.color = '#ff5555';
+        closeBtn.onmouseout = () => closeBtn.style.color = '#6272a4';
+
+        const title = document.createElement('div');
+        title.style.cssText = 'font-weight: bold; margin-bottom: 12px; margin-right: 20px; font-size: 14px; color: #50fa7b;';
+        title.textContent = `Выберите значение для "${fieldName}":`;
+
+        const select = document.createElement('select');
+        select.style.cssText = `
+        width: 100%; padding: 8px; background: #44475a; color: #fff;
+        border: 1px solid #6272a4; border-radius: 4px; margin-bottom: 15px;
+        outline: none; font-size: 14px;
+    `;
+
+        options.forEach(opt => {
+            const optionEl = document.createElement('option');
+            optionEl.value = opt;
+            optionEl.textContent = opt;
+            select.appendChild(optionEl);
+        });
+
+        const btn = document.createElement('button');
+        btn.textContent = 'Подтвердить';
+        btn.type = 'button';
+        btn.style.cssText = `
+        width: 100%; padding: 8px; background: #50fa7b; color: #282a36;
+        font-weight: bold; border: none; border-radius: 4px; cursor: pointer;
+    `;
+
+        const closeModal = (resultValue) => {
+            window.removeEventListener('keydown', handleKeyDown);
+            if (document.body.contains(modal)) {
+                document.body.removeChild(modal);
+            }
+            resolve(resultValue);
+        };
+
+        btn.onclick = () => {
+            closeModal(select.value);
+        };
+
+        closeBtn.onclick = () => {
+            closeModal(null);
+        };
+
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                closeModal(null);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+
+        modal.appendChild(closeBtn);
+        modal.appendChild(title);
+        modal.appendChild(select);
+        modal.appendChild(btn);
+        document.body.appendChild(modal);
+    });
+}
+
+function cleanForMatching(str) {
+    if (!str) return '';
+    return str
+        .toLowerCase()
+        .replace(/ё/g, 'е')
+        .replace(/[()–—]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// =================================================================
+// МОДУЛЬ ЗАПОЛНЕНИЯ ПОЛЯ С АВТО-СКРОЛЛОМ
+// =================================================================
+async function fillFormField(field) {
+    const { type, target, value, name, default_value, targetValue } = field;
+    const targetClean = extractParamName(target) || name;
+
+    let valClean = targetValue || parseTargetText(value);
+    if (!valClean && default_value) {
+        valClean = parseTargetText(default_value) || String(default_value).trim();
+    }
+
+    if (!valClean) return false;
+    await safeResetDropdownState();
+
+    const isDropdownType = type === 'dropdown' ||
+          (name && (name.toLowerCase().includes('модификац') || name.toLowerCase().includes('комплектац') || name.toLowerCase().includes('тип')));
+
+    if (isDropdownType) {
+        const fieldContainer = await waitForFieldReady(() => {
+            let foundEl = null;
+
+            if (targetClean) {
+                const selector = `[data-marker*="${targetClean}"], [name*="${targetClean}"], [id*="${targetClean}"]`;
+                const match = document.querySelector(selector);
+                if (match) {
+                    foundEl = match.closest('[class*="field"], [class*="select"], [role="combobox"], [class*="root"]') || match.parentElement;
+                }
+            }
+
+            if (!foundEl && name) {
+                const allLabels = Array.from(document.querySelectorAll('div, label, span, p'));
+                const labelMatch = allLabels.find(el => {
+                    const text = el.textContent ? el.textContent.trim().toLowerCase() : '';
+                    return text === name.toLowerCase();
+                });
+
+                if (labelMatch) {
+                    foundEl = labelMatch.closest('[class*="field"], [class*="select"], [role="combobox"], [class*="root"]') ||
+                        labelMatch.parentElement?.querySelector('[role="combobox"], [class*="select"]');
+                }
+            }
+
+            if (!foundEl && targetClean) {
+                const matches = Array.from(document.querySelectorAll('[role="combobox"]'));
+                for (let el of matches) {
+                    if ((el.textContent || '').toLowerCase().includes(name.toLowerCase())) {
+                        foundEl = el;
+                        break;
+                    }
+                }
+            }
+
+            return foundEl;
+        }, 3000);
+
+        if (!fieldContainer) {
+            ui.log(`❌ Поле "${name}" (${targetClean}) не найдено`, '#ff5555');
+            return false;
+        }
+
+        fieldContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        await sleep(150);
+
+        const clickTarget = fieldContainer.querySelector('[class*="selectWrapper"], [class*="selectSpan"], [data-marker*="select-text"], button, [role="combobox"]') || fieldContainer;
+
+        if (typeof clickTarget.focus === 'function') clickTarget.focus();
+        await triggerFullClick(clickTarget);
+
+        await sleep(200);
+
+        const targetOption = await waitForFieldReady(() => {
+            const options = Array.from(document.querySelectorAll(
+                '[data-marker*="custom-option"], [data-marker*="option"], [role="option"], [role="checkbox"], div[class*="textWrapper"], div[class*="suggest-item"], li'
+            ));
+            const visibleOptions = options.filter(el => el.offsetWidth > 0 && el.offsetHeight > 0);
+            return findBestMatchingOption(visibleOptions, valClean);
+        }, 2000);
+
+        if (targetOption) {
+            targetOption.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+            await sleep(50);
+            await triggerFullClick(targetOption);
+            ui.log(`🎯 [Dropdown] Выбран пункт: "${targetOption.textContent.trim()}"`, '#50fa7b');
+            await safeResetDropdownState();
+            return true;
+        } else {
+            ui.log(`❌ [Dropdown] Не найден вариант "${valClean}" в списке "${name}"`, '#ff5555');
+            await safeResetDropdownState();
+            return false;
+        }
+    }
+
+    const isRadioType = type === 'radio' || type === 'button' || (typeof target === 'string' && target.toLowerCase().includes('radio'));
+
+    if (isRadioType) {
+        const targetRadioLabel = await waitForFieldReady(() => {
+            let scope = document;
+            if (targetClean) {
+                const container = document.querySelector(`[data-marker*="${targetClean}"], [class*="${targetClean}"]`);
+                if (container) scope = container;
+            }
+
+            const candidates = Array.from(scope.querySelectorAll(
+                '[role="button"], [role="radio"], label, button, [class*="option-j5fd8"], [class*="item-item"], [class*="chip"], [class*="card"]'
+            ));
+
+            const targetNormalized = cleanForMatching(valClean).replace(/ё/g, 'е');
+            const targetYears = targetNormalized.match(/\d{4}/g) || [];
+
+            return candidates.find(el => {
+                if (el.offsetWidth > 700 || el.offsetHeight > 500) return false;
+
+                const directText = cleanForMatching(el.innerText || el.textContent).replace(/ё/g, 'е');
+                if (!directText) return false;
+
+                if (directText === targetNormalized) return true;
+
+                const subLabels = Array.from(el.querySelectorAll('p, span, div'));
+                if (subLabels.some(sub => cleanForMatching(sub.textContent).replace(/ё/g, 'е') === targetNormalized)) {
+                    return true;
+                }
+
+                if (targetYears.length > 0) {
+                    const candidateYears = directText.match(/\d{4}/g) || [];
+                    const hasYearMatch = targetYears.some(y => candidateYears.includes(y));
+
+                    if (hasYearMatch) {
+                        const needsRestyle = targetNormalized.includes('рестайлинг');
+                        const hasRestyle = directText.includes('рестайлинг');
+
+                        if (needsRestyle === hasRestyle) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            });
+        }, 2500);
+
+        if (targetRadioLabel) {
+            targetRadioLabel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await sleep(100);
+
+            const inputEl = targetRadioLabel.querySelector('input');
+            if (inputEl) {
+                inputEl.click();
+                inputEl.checked = true;
+                inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            const clickTarget = targetRadioLabel.querySelector('p, span, img, label') || targetRadioLabel;
+            await triggerFullClick(clickTarget);
+
+            await sleep(50);
+            ui.log(`🎯 Выбрана радиокнопка/вариант: "${valClean}"`, '#50fa7b');
+            return true;
+        } else {
+            ui.log(`⚠️ [Radio/Button] Вариант "${valClean}" не найден, пробуем как input...`, '#ffb86c');
+        }
+    }
+
+    if (!targetClean) return false;
+
+    const input = await waitForFieldReady(() => {
+        return document.querySelector(`input[data-marker*="${targetClean}"]`) ||
+            document.querySelector(`input[id="${targetClean}"]`) ||
+            document.querySelector(`input[name*="${targetClean}"]`);
+    }, 2000);
+
+    if (!input) return false;
+
+    const currentValue = normalizeText(input.value);
+    if (currentValue === normalizeText(valClean)) {
+        ui.log(`ℹ️ Поле "${targetClean}" уже содержит значение "${valClean}". Пропуск.`, '#8be9fd');
+        return true;
+    }
+
+    const labelContainer = input.closest('label') || input.closest('div[class*="select"]') || input;
+    labelContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await sleep(100);
+
+    await triggerFullClick(labelContainer);
+    input.focus();
+    await triggerFullClick(input);
+    await sleep(50);
+
+    setNativeValue(input, valClean);
+    await sleep(150);
+
+    if (type === 'list' || type === 'suggest') {
+        const targetOption = await waitForFieldReady(() => {
+            const items = Array.from(document.querySelectorAll('[data-marker*="option"], [role="option"], li, div[class*="suggest-item"]'));
+            const visibleItems = items.filter(el => el.offsetWidth > 0 && el.offsetHeight > 0);
+            return findBestMatchingOption(visibleItems, valClean);
+        }, 1500);
+
+        if (targetOption) {
+            targetOption.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+            await sleep(30);
+            await triggerFullClick(targetOption);
+            ui.log(`🎯 Выбран пункт списка: "${targetOption.textContent.trim()}"`, '#50fa7b');
+        } else {
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+        }
+
+        await sleep(50);
+        await safeResetDropdownState();
+    }
+
+    return true;
+}
+
+
+
 })();
