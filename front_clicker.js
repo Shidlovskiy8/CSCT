@@ -21,44 +21,39 @@
     const WEBHOOK_URL = 'https://bpa-n8n-stage.k.avito.ru/webhook/d1022c79-45b8-4971-9712-53ccd03cbd25';
     const API_KEY = ''; 
 
-    // 1. СОЗДАНИЕ ИНЛАЙН-КНОПКИ
+    // 1. СОЗДАНИЕ КНОПКИ (стиль из вашего кода)
     function createInlineButton() {
-        const btn = document.createElement('div');
+        const btn = document.createElement('button');
         btn.id = BUTTON_ID;
+        btn.type = 'button';
+        btn.textContent = '🚀 Автоклик';
         btn.title = 'Отправить параметры на вебхук';
-
-        Object.assign(btn.style, {
-            width: '24px',
-            height: '24px',
-            backgroundColor: '#ff6600',
-            borderRadius: '4px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            marginLeft: '6px',
-            marginRight: '4px',
-            flexShrink: '0',
-            transition: 'background-color 0.2s ease',
-            userSelect: 'none',
-            zIndex: '1000'
-        });
-
-        btn.innerHTML = `
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
+        
+        btn.style.cssText = `
+            margin-left: 8px; 
+            padding: 4px 10px; 
+            background-color: #00aaff;
+            color: #ffffff; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer;
+            font-size: 12px; 
+            font-weight: bold; 
+            vertical-align: middle; 
+            z-index: 9999;
         `;
 
-        btn.addEventListener('mouseenter', () => btn.style.backgroundColor = '#e65c00');
-        btn.addEventListener('mouseleave', () => btn.style.backgroundColor = '#ff6600');
+        btn.addEventListener('mouseenter', () => {
+            btn.style.backgroundColor = '#0099e6';
+        });
+        btn.addEventListener('mouseleave', () => {
+            btn.style.backgroundColor = '#00aaff';
+        });
 
         return btn;
     }
 
-    // 2. МОДАЛЬНОЕ ОКНО (без изменений)
+    // 2. МОДАЛЬНОЕ ОКНО
     const modalOverlay = document.createElement('div');
     Object.assign(modalOverlay.style, {
         position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
@@ -173,41 +168,29 @@
         }
     });
 
-    // 3. ВСТРАИВАНИЕ КНОПКИ - ИСПРАВЛЕНО
+    // 3. ВСТРАИВАНИЕ КНОПКИ
     function injectButton() {
-        // Проверяем, не добавлена ли уже кнопка
         if (document.getElementById(BUTTON_ID)) {
             return;
         }
 
-        // Ищем блок с модификацией по data-marker
-        const labelElement = document.querySelector('[data-marker="modification-name/label"]');
-        
-        if (!labelElement) {
-            console.log('[TM] labelElement не найден');
-            return;
-        }
-        
-        // Находим родительский контейнер styles-module-root-oD3Gk
-        const targetContainer = labelElement.parentElement;
-        
-        if (!targetContainer) {
-            console.log('[TM] targetContainer (parentElement) не найден');
-            return;
-        }
+        // Ищем кнопку historyBtn как целевой элемент для вставки
+        const targetEl = document.querySelector('button[data-marker="modification-name/historyBtn"]') ||
+                         document.querySelector('[data-marker="modification-name/label"]') ||
+                         document.querySelector('[class*="modification-name"]');
 
-        console.log('[TM] Нашли targetContainer, добавляем кнопку');
-        
+        if (!targetEl) return;
+
         const btn = createInlineButton();
         btn.addEventListener('click', openModal);
 
-        // Вставляем кнопку после всех существующих детей
-        targetContainer.appendChild(btn);
-        
-        console.log('[TM] Кнопка добавлена');
+        // Вставляем после целевого элемента
+        if (targetEl.parentNode) {
+            targetEl.parentNode.insertBefore(btn, targetEl.nextSibling);
+        }
     }
 
-    // Добавляем модальное окно в body
+    // Добавляем модальное окно
     if (document.body) {
         document.body.appendChild(modalOverlay);
     } else {
@@ -216,27 +199,27 @@
         });
     }
 
-    // Пробуем добавить кнопку несколько раз с увеличенными интервалами
+    // Пробуем добавить кнопку несколько раз
     setTimeout(injectButton, 200);
     setTimeout(injectButton, 600);
     setTimeout(injectButton, 1200);
     setTimeout(injectButton, 2000);
 
-    // Наблюдаем за изменениями в DOM
-    const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            if (mutation.addedNodes.length > 0) {
-                injectButton();
-                break;
-            }
+    // Наблюдатель за изменениями URL
+    let lastHref = window.location.href;
+    const urlObserver = new MutationObserver(() => {
+        if (window.location.href !== lastHref) {
+            lastHref = window.location.href;
+            injectButton();
         }
     });
-    
-    observer.observe(document.documentElement, { 
-        childList: true, 
-        subtree: true 
-    });
+    urlObserver.observe(document.head, { childList: true, subtree: true });
 
-    // Пробуем сразу
+    // Наблюдатель за DOM
+    const observer = new MutationObserver(() => {
+        injectButton();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
     injectButton();
 })();
