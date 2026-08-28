@@ -1,6 +1,8 @@
 (function() {
+    // 1. Укажите ваш URL для Webhook
     const WEBHOOK_URL = 'https://bpa-n8n-stage.k.avito.ru/webhook/d1022c79-45b8-4971-9712-53ccd03cbd25';
 
+    // 2. Находим целевой контейнер для кнопки
     const container = document.querySelector('div.styles-module-root-oD3Gk');
     if (!container) {
         console.warn('Контейнер для кнопки автоклика не найден!');
@@ -11,6 +13,7 @@
         return;
     }
 
+    // 3. Создаем элемент кнопки
     const btn = document.createElement('button');
     btn.id = 'auto-click-webhook-btn';
     btn.type = 'button';
@@ -33,19 +36,25 @@
         gap: 4px;
     `;
 
+    // 4. Обработчик клика: сбор данных включая каталог и отправка на Webhook
     btn.addEventListener('click', async () => {
         const data = {};
 
-        // 1. Добавляем каталог на самый верх объекта
-        const catalogElement = document.querySelector('div[data-marker="main-catalog-title"] span');
-        data['catalog_name'] = catalogElement ? catalogElement.textContent.trim() : '';
+        // Парсим название каталога из указанного класса
+        const catalogElement = document.querySelector('span.styles-module-size_s-e9rn2');
+        if (catalogElement) {
+            data['catalog_name'] = catalogElement.textContent.trim();
+        }
 
-        // 2. Метка модификации
+        // Собираем название модификации
         const modLabel = container.querySelector('[data-marker="modification-name/label"]');
-        data['modification_label'] = modLabel ? modLabel.textContent.trim() : '';
+        if (modLabel) {
+            data['modification_label'] = modLabel.textContent.trim();
+        }
 
-        // 3. Остальные параметры
+        // Собираем все параметры из блока параметров
         const paramItems = document.querySelectorAll('div.styles-module-param-RwXVL[data-marker="modification/param"]');
+        
         paramItems.forEach(item => {
             const nameElement = item.querySelector('[data-marker="modification/param-name-link"]');
             const valueElements = item.querySelectorAll('[data-marker="modification/value-name-link"]');
