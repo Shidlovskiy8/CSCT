@@ -1,6 +1,8 @@
 (function() {
     'use strict';
 
+    const BUTTON_ID = 'tm-inline-webhook-btn';
+
     // Проверка URL: запускаем скрипт на страницах любого каталога Avito с модификациями
     if (!window.location.href.startsWith('https://catalogs.avito.ru/catalog/')) {
         return;
@@ -21,8 +23,8 @@
     // 1. СОЗДАНИЕ ИНЛАЙН-КНОПКИ
     function createInlineButton() {
         const btn = document.createElement('div');
-        btn.id = 'tm-inline-n8n-btn';
-        btn.title = 'Отправить в n8n';
+        btn.id = BUTTON_ID;
+        btn.title = 'Отправить параметры на вебхук';
 
         Object.assign(btn.style, {
             width: '24px',
@@ -34,15 +36,18 @@
             justifyContent: 'center',
             cursor: 'pointer',
             marginLeft: '6px',
+            marginRight: '4px',
             flexShrink: '0',
             transition: 'background-color 0.2s ease',
             userSelect: 'none'
         });
 
+        // Иконка передачи/облака
         btn.innerHTML = `
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
             </svg>
         `;
 
@@ -167,17 +172,17 @@
         }
     });
 
-    // 3. ВСТРАИВАНИЕ КНОПКИ В DOM - ИСПРАВЛЕНО
+    // 3. ВСТРАИВАНИЕ КНОПКИ В DOM
     function injectButton() {
         // Ищем блок с модификацией по data-marker="modification-name/label"
         const labelElement = document.querySelector('[data-marker="modification-name/label"]');
         
         if (!labelElement) return;
         
-        // Находим родительский контейнер (тот самый div.styles-module-root-oD3Gk)
+        // Находим родительский контейнер (div.styles-module-root-oD3Gk)
         const targetContainer = labelElement.parentElement;
         
-        if (targetContainer && !document.getElementById('tm-inline-n8n-btn')) {
+        if (targetContainer && !document.getElementById(BUTTON_ID)) {
             const btn = createInlineButton();
             btn.addEventListener('click', openModal);
 
@@ -190,7 +195,6 @@
     // Запуск встраивания
     if (document.body) {
         document.body.appendChild(modalOverlay);
-        // Небольшая задержка для уверенности что DOM загружен
         setTimeout(injectButton, 100);
     } else {
         document.addEventListener('DOMContentLoaded', () => {
@@ -202,6 +206,5 @@
     const observer = new MutationObserver(injectButton);
     observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
 
-    // Пробуем сразу после загрузки
     injectButton();
 })();
