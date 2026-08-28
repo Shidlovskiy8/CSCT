@@ -3,13 +3,16 @@
 
     const BUTTON_ID = 'tm-inline-webhook-btn';
 
-    // Проверка URL: запускаем скрипт на страницах любого каталога Avito с модификациями
-    if (!window.location.href.startsWith('https://catalogs.avito.ru/catalog/')) {
+    // Проверка URL: запускаем скрипт на страницах любого каталога Avito
+    // где в пути есть /catalog/ и /modifications/
+    const currentUrl = window.location.href;
+    
+    if (!currentUrl.startsWith('https://catalogs.avito.ru/catalog/')) {
         return;
     }
     
-    // Дополнительная проверка: страница должна содержать /modifications/ в пути
-    if (!window.location.href.includes('/modifications/')) {
+    // Проверяем наличие /modifications/ в любом месте пути (не только как отдельный сегмент)
+    if (!currentUrl.includes('/modifications/')) {
         return;
     }
 
@@ -195,11 +198,16 @@
     // Запуск встраивания
     if (document.body) {
         document.body.appendChild(modalOverlay);
+        // Пробуем несколько раз с интервалом на случай медленной загрузки
         setTimeout(injectButton, 100);
+        setTimeout(injectButton, 500);
+        setTimeout(injectButton, 1000);
     } else {
         document.addEventListener('DOMContentLoaded', () => {
             document.body.appendChild(modalOverlay);
             setTimeout(injectButton, 100);
+            setTimeout(injectButton, 500);
+            setTimeout(injectButton, 1000);
         });
     }
 
