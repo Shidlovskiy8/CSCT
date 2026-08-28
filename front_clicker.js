@@ -34,60 +34,6 @@
     }
   };
 
-  // Оверлей отладки на странице подачи объявления
-  class DebugUI {
-    constructor() {
-      this.container = document.createElement('div');
-      this.container.style.cssText = `
-        position: fixed; top: 10px; right: 10px; width: 350px; max-height: 80vh;
-        background: rgba(40, 42, 54, 0.95); color: #f8f8f2; font-family: monospace;
-        font-size: 11px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        z-index: 999999; display: flex; flex-direction: column; overflow: hidden;
-        border: 1px solid #6272a4;
-      `;
-
-      this.header = document.createElement('div');
-      this.header.style.cssText = `
-        padding: 8px 12px; background: #44475a; font-weight: bold;
-        display: flex; justify-content: space-between; align-items: center;
-        border-bottom: 1px solid #6272a4;
-      `;
-      this.header.innerHTML = `<span>🚀 AutoClicker Debug</span><span id="ac-status" style="padding: 2px 6px; border-radius: 4px; background: #6272a4;">INIT</span>`;
-      this.container.appendChild(this.header);
-
-      this.logArea = document.createElement('div');
-      this.logArea.style.cssText = `
-        padding: 10px; overflow-y: auto; flex-grow: 1; display: flex;
-        flex-direction: column; gap: 4px; max-height: 300px;
-      `;
-      this.container.appendChild(this.logArea);
-
-      document.body.appendChild(this.container);
-    }
-
-    setStatus(text, color = '#6272a4') {
-      const statusEl = this.container.querySelector('#ac-status');
-      if (statusEl) {
-        statusEl.textContent = text;
-        statusEl.style.background = color;
-        statusEl.style.color = '#fff';
-      }
-    }
-
-    setFields(fields) {
-      this.log(`Загружено полей: ${fields.length}`, '#bd93f9');
-    }
-
-    log(msg, color = '#f8f8f2') {
-      const item = document.createElement('div');
-      item.style.color = color;
-      item.style.wordBreak = 'break-word';
-      item.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-      this.logArea.appendChild(item);
-      this.logArea.scrollTop = this.logArea.scrollHeight;
-    }
-  }
-
   // Эмуляция полного клика мыши по элементу DOM
   async function triggerFullClick(element) {
     if (!element) return;
@@ -167,7 +113,7 @@
 
 
   // =================================================================
-  // 1. ТОЧКА ВХОДА №1: CATALOGS.AVITO.RU (Точный оригинал изначальной логики)
+  // 1. ТОЧКА ВХОДА №1: CATALOGS.AVITO.RU (Первый блок без изменений)
   // =================================================================
   if (window.location.hostname.includes('catalogs.avito.ru')) {
 
@@ -238,19 +184,76 @@
       targetContainer.appendChild(btn);
     }
 
-    const observer = new MutationObserver(() => {
+    // Инициализируем поиск контейнера строго при загрузке и через контролируемый интервал,
+    // чтобы кнопка не переносилась в другие контейнеры на странице
+    const catalogInitInterval = setInterval(() => {
+      if (document.getElementById('ac-start-btn')) {
+        clearInterval(catalogInitInterval);
+        return;
+      }
       injectAutoclickButton();
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
-    injectAutoclickButton();
+    }, 300);
   }
 
 
   // =================================================================
-  // 2. ТОЧКА ВХОДА №2: WWW.AVITO.RU/ADDITEM (Исполнительный скрипт)
+  // 2. ТОЧКА ВХОДА №2: WWW.AVITO.RU/ADDITEM (Второй блок)
   // =================================================================
   if (window.location.hostname.includes('avito.ru') && window.location.pathname.includes('/additem')) {
+
+    // Класс UI консоли изолирован внутри второго блока
+    class DebugUI {
+      constructor() {
+        this.container = document.createElement('div');
+        this.container.style.cssText = `
+          position: fixed; top: 10px; right: 10px; width: 350px; max-height: 80vh;
+          background: rgba(40, 42, 54, 0.95); color: #f8f8f2; font-family: monospace;
+          font-size: 11px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+          z-index: 999999; display: flex; flex-direction: column; overflow: hidden;
+          border: 1px solid #6272a4;
+        `;
+
+        this.header = document.createElement('div');
+        this.header.style.cssText = `
+          padding: 8px 12px; background: #44475a; font-weight: bold;
+          display: flex; justify-content: space-between; align-items: center;
+          border-bottom: 1px solid #6272a4;
+        `;
+        this.header.innerHTML = `<span>🚀 AutoClicker Debug</span><span id="ac-status" style="padding: 2px 6px; border-radius: 4px; background: #6272a4;">INIT</span>`;
+        this.container.appendChild(this.header);
+
+        this.logArea = document.createElement('div');
+        this.logArea.style.cssText = `
+          padding: 10px; overflow-y: auto; flex-grow: 1; display: flex;
+          flex-direction: column; gap: 4px; max-height: 300px;
+        `;
+        this.container.appendChild(this.logArea);
+
+        document.body.appendChild(this.container);
+      }
+
+      setStatus(text, color = '#6272a4') {
+        const statusEl = this.container.querySelector('#ac-status');
+        if (statusEl) {
+          statusEl.textContent = text;
+          statusEl.style.background = color;
+          statusEl.style.color = '#fff';
+        }
+      }
+
+      setFields(fields) {
+        this.log(`Загружено полей: ${fields.length}`, '#bd93f9');
+      }
+
+      log(msg, color = '#f8f8f2') {
+        const item = document.createElement('div');
+        item.style.color = color;
+        item.style.wordBreak = 'break-word';
+        item.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        this.logArea.appendChild(item);
+        this.logArea.scrollTop = this.logArea.scrollHeight;
+      }
+    }
 
     async function checkIsActive() {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
