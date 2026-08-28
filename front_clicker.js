@@ -3,7 +3,7 @@
     'use strict';
 
     // Проверка URL: запускаем скрипт только на страницах автокаталога Avito
-    if (!window.location.href.startsWith('https://catalogs.avito.ru/catalog/auto/')) {
+    if (!window.location.href.startsWith('https://catalogs.avito.ru/catalog/')) {
         return;
     }
 
