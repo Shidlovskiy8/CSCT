@@ -691,26 +691,28 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
     function injectButton() {
         if (buttonInjected) return;
 
+        // Поиск целевого элемента
         const targetEl = document.querySelector('button[data-marker="modification-name/historyBtn"]') ||
-              document.querySelector('[class*="modification-name"]') ||
-              document.querySelector('h1');
+                         document.querySelector('[class*="modification-name"]') ||
+                         document.querySelector('h1');
 
-        if (!targetEl) return;
+        if (!targetEl || !targetEl.parentNode) return;
 
-        const existingBtn = targetEl.parentNode?.querySelector('button[textContent*="Автоклик"]');
-        if (existingBtn) {
+        // ИСПРАВЛЕНО: Проверка наличия кнопки по id/class вместо CSS-селектора textContent
+        if (document.getElementById('avito-autoclick-btn')) {
             buttonInjected = true;
             return;
         }
 
         const btn = document.createElement('button');
+        btn.id = 'avito-autoclick-btn'; // Добавлен ID для точного поиска
         btn.type = 'button';
         btn.textContent = '🚀 Автоклик';
         btn.style.cssText = `
-        margin-left: 8px; padding: 4px 10px; background-color: #00aaff;
-        color: #ffffff; border: none; border-radius: 4px; cursor: pointer;
-        font-size: 12px; font-weight: bold; vertical-align: middle; z-index: 9999;
-    `;
+            margin-left: 8px; padding: 4px 10px; background-color: #00aaff;
+            color: #ffffff; border: none; border-radius: 4px; cursor: pointer;
+            font-size: 12px; font-weight: bold; vertical-align: middle; z-index: 9999;
+        `;
 
         btn.addEventListener('click', async (e) => {
             e.preventDefault();
@@ -721,8 +723,8 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
 
             try {
                 const catalogSpan = document.querySelector('span.styles-module-size_s-e9rn2') ||
-                      document.querySelector('span[data-marker="modification/select-text"]') ||
-                      document.querySelector('h1');
+                                     document.querySelector('span[data-marker="modification/select-text"]') ||
+                                     document.querySelector('h1');
                 const catalogText = catalogSpan ? catalogSpan.textContent.trim() : null;
 
                 if (!catalogText) {
@@ -886,9 +888,13 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
                 }
 
                 const jsonFields = JSON.stringify(dynamicValues);
-                await chrome.storage.local.set('selected_catalog', catalogText);
-                await chrome.storage.local.set('extracted_fields', jsonFields);
-                await chrome.storage.local.set('autoclick_active', true);
+                
+                // ИСПРАВЛЕНО: Запись в chrome.storage с безопасным Promise API
+                await chrome.storage.local.set({
+                    'selected_catalog': catalogText,
+                    'extracted_fields': jsonFields,
+                    'autoclick_active': true
+                });
 
                 try {
                     localStorage.setItem('ac_selected_catalog', catalogText);
@@ -907,29 +913,40 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
             }
         });
 
-        if (targetEl.parentNode) {
-            targetEl.parentNode.insertBefore(btn, targetEl.nextSibling);
-            buttonInjected = true;
-        }
+        targetEl.parentNode.insertBefore(btn, targetEl.nextSibling);
+        buttonInjected = true;
     }
 
-    let lastHref = window.location.href;
-    const urlObserver = new MutationObserver(() => {
-        if (window.location.href !== lastHref) {
-            lastHref = window.location.href;
-            buttonInjected = false;
-            injectButton();
+    // ИСПРАВЛЕНО: Запуск отслеживания DOM только после полной загрузки document.body
+    function initObservers() {
+        if (!document.body) {
+            window.addEventListener('DOMContentLoaded', initObservers);
+            return;
         }
-    });
-    urlObserver.observe(document.head, { childList: true, subtree: true });
 
-    const observer = new MutationObserver(() => {
+        let lastHref = window.location.href;
+        const urlObserver = new MutationObserver(() => {
+            if (window.location.href !== lastHref) {
+                lastHref = window.location.href;
+                buttonInjected = false;
+                injectButton();
+            }
+        });
+
+        if (document.head) {
+            urlObserver.observe(document.head, { childList: true, subtree: true });
+        }
+
+        const observer = new MutationObserver(() => {
+            injectButton();
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
+
         injectButton();
-    });
+    }
 
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    injectButton();
+    initObservers();
 }
 
 // =================================================================
