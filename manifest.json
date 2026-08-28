@@ -17,35 +17,24 @@
       "auto_run": true
     },
     {
-      "id": "front_clicker_helpers_ui",
-      "title": "Front Clicker — Helpers & UI",
-      "category": "Autofill",
-      "description": "Утилиты клика, логгер и интерфейс отладки",
+      "id": "front_clicker_helpers",
+      "title": "Front Clicker: Вспомогательные функции",
+      "description": "Базовые утилиты и хелперы",
       "script_url": "front_clicker/helpers.js",
       "auto_run": true
     },
     {
-      "id": "front_clicker_ui",
-      "title": "Front Clicker — Debug UI",
-      "category": "Autofill",
-      "description": "Модуль боковой панели отладки и блокировки прокрутки",
-      "script_url": "front_clicker/ui.js",
+      "id": "front_clicker_catalogs",
+      "title": "Front Clicker: Справочники и каталоги",
+      "description": "Данные и сопоставления категорий/характеристик",
+      "script_url": "front_clicker/catalogs.js",
       "auto_run": true
     },
     {
-      "id": "front_clicker_api",
-      "title": "Front Clicker — Table API",
-      "category": "Autofill",
-      "description": "Загрузка и кэширование данных Google Таблиц",
-      "script_url": "front_clicker/googleTableApi.js",
-      "auto_run": true
-    },
-    {
-      "id": "front_clicker_filler",
-      "title": "Front Clicker — Form Filler",
-      "category": "Autofill",
-      "description": "Автоматическое заполнение полей, списков и радиокнопок",
-      "script_url": "front_clicker/formFiller.js",
+      "id": "front_clicker_additem",
+      "title": "Front Clicker: Заполнение объявлений",
+      "description": "Основная логика кликера и автозаполнения форм",
+      "script_url": "front_clicker/additem.js",
       "auto_run": true
     }
   ]
