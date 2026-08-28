@@ -1,6 +1,8 @@
 (function () {
     'use strict';
 
+    console.log('[Avito AutoFill] Скрипт загружен и инициализируется...');
+
     // -----------------------------------------------------------------
     // КОНФИГУРАЦИЯ GOOGLE SHEETS API
     // -----------------------------------------------------------------
@@ -8,7 +10,7 @@
     const STORAGE_CACHE_KEY = 'gs_fields_config';
 
     // -----------------------------------------------------------------
-    // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (DOM, Events, Text Parsing)
+    // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
     // -----------------------------------------------------------------
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -105,6 +107,7 @@
     // ИНТЕГРАЦИЯ С GOOGLE SHEETS API
     // -----------------------------------------------------------------
     async function fetchTableData(forceRefresh = false) {
+        console.log('[Avito AutoFill] Запуск fetchTableData');
         const cached = localStorage.getItem(STORAGE_CACHE_KEY);
         if (cached && !forceRefresh) {
             ui.log('📦 Данные извлечены из локального кэша', '#89b4fa');
@@ -422,6 +425,7 @@
     // ОСНОВНОЙ СЦЕНАРИЙ ИСПОЛНЕНИЯ
     // -----------------------------------------------------------------
     async function processManualInput() {
+        console.log('[Avito AutoFill] Запуск processManualInput');
         const inputEl = document.getElementById('ac-input-text');
         const rawText = inputEl ? inputEl.value.trim() : '';
 
@@ -465,7 +469,7 @@
     }
 
     // -----------------------------------------------------------------
-    // UI МЕНЕДЖЕР (С прямой привязкой обработчиков событий)
+    // UI МЕНЕДЖЕР (С защитой от перехвата событий React/Avito)
     // -----------------------------------------------------------------
     const ui = {
         panel: null,
@@ -477,16 +481,16 @@
             const container = document.createElement('div');
             container.id = 'ac-control-panel';
             container.style.cssText = `
-                position: fixed; top: 20px; right: 20px; z-index: 999999;
-                background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a;
-                border-radius: 8px; padding: 12px; font-family: monospace; font-size: 12px;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.4); width: 360px;
+                position: fixed !important; top: 20px !important; right: 20px !important; z-index: 2147483647 !important;
+                background: #1e1e2e !important; color: #cdd6f4 !important; border: 1px solid #45475a !important;
+                border-radius: 8px !important; padding: 12px !important; font-family: monospace !important; font-size: 12px !important;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.6) !important; width: 360px !important; pointer-events: auto !important;
             `;
 
             container.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                     <b style="color:#89b4fa; font-size:14px;">🚀 Avito AutoFill v2.0</b>
-                    <button id="ac-close-btn" style="background:none; border:none; color:#f38ba8; cursor:pointer;">✖</button>
+                    <button id="ac-close-btn" type="button" style="background:none; border:none; color:#f38ba8; cursor:pointer; font-size:14px;">✖</button>
                 </div>
                 <textarea id="ac-input-text" rows="5" placeholder="Вставьте данные списком:&#10;[1. list] Производитель: params[112916] ➔ &quot;Acer&quot;&#10;Модель: params[112912] ➔ &quot;Aspire&quot;" style="width:100%; background:#11111b; color:#a6adc8; border:1px solid #313244; border-radius:4px; padding:6px; box-sizing:border-box; resize:vertical; font-size:11px;"></textarea>
                 <div style="display:flex; gap:6px; margin-top:8px;">
@@ -500,10 +504,33 @@
             this.panel = container;
             this.logContainer = container.querySelector('#ac-log-container');
 
-            // Явная привязка через addEventListener (гарантирует работу в Content Scripts)
-            container.querySelector('#ac-close-btn').addEventListener('click', () => container.remove());
-            container.querySelector('#ac-start-btn').addEventListener('click', () => processManualInput());
-            container.querySelector('#ac-sync-gs-btn').addEventListener('click', () => fetchTableData(true));
+            // Предотвращаем перехват кликов формой Avito
+            container.addEventListener('click', (e) => e.stopPropagation(), true);
+            container.addEventListener('mousedown', (e) => e.stopPropagation(), true);
+
+            const startBtn = container.querySelector('#ac-start-btn');
+            const syncBtn = container.querySelector('#ac-sync-gs-btn');
+            const closeBtn = container.querySelector('#ac-close-btn');
+
+            startBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                processManualInput();
+            };
+
+            syncBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                fetchTableData(true);
+            };
+
+            closeBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                container.remove();
+            };
+
+            console.log('[Avito AutoFill] Панель UI успешно смонтирована');
         },
 
         log(msg, color = '#cdd6f4') {
@@ -518,15 +545,11 @@
     };
 
     // -----------------------------------------------------------------
-    // ИНИЦИАЛИЗАЦИЯ ПОСЛЕ ВНЕДРЕНИЯ
+    // ИНИЦИАЛИЗАЦИЯ
     // -----------------------------------------------------------------
-    function start() {
-        ui.init();
-    }
-
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', start);
+        document.addEventListener('DOMContentLoaded', () => ui.init());
     } else {
-        start();
+        ui.init();
     }
 })();
