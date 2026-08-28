@@ -3,15 +3,13 @@
 
     const BUTTON_ID = 'tm-inline-webhook-btn';
 
-    // Проверка URL: запускаем скрипт на страницах любого каталога Avito
-    // где в пути есть /catalog/ и /modifications/
+    // Проверка URL
     const currentUrl = window.location.href;
     
     if (!currentUrl.startsWith('https://catalogs.avito.ru/catalog/')) {
         return;
     }
     
-    // Проверяем наличие /modifications/ в любом месте пути (не только как отдельный сегмент)
     if (!currentUrl.includes('/modifications/')) {
         return;
     }
@@ -42,10 +40,10 @@
             marginRight: '4px',
             flexShrink: '0',
             transition: 'background-color 0.2s ease',
-            userSelect: 'none'
+            userSelect: 'none',
+            zIndex: '1000'
         });
 
-        // Иконка передачи/облака
         btn.innerHTML = `
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -60,7 +58,7 @@
         return btn;
     }
 
-    // 2. МОДАЛЬНОЕ ОКНО
+    // 2. МОДАЛЬНОЕ ОКНО (без изменений)
     const modalOverlay = document.createElement('div');
     Object.assign(modalOverlay.style, {
         position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
@@ -171,48 +169,74 @@
             submitBtn.disabled = false;
             submitBtn.innerText = 'Отправить';
             responseBox.style.display = 'flex';
-            responseOutput.innerText = `Сетевая ошибка при запросе к n8n: ${err.message}`;
+            responseOutput.innerText = `Сетевая ошибка: ${err.message}`;
         }
     });
 
-    // 3. ВСТРАИВАНИЕ КНОПКИ В DOM
+    // 3. ВСТРАИВАНИЕ КНОПКИ - ИСПРАВЛЕНО
     function injectButton() {
-        // Ищем блок с модификацией по data-marker="modification-name/label"
+        // Проверяем, не добавлена ли уже кнопка
+        if (document.getElementById(BUTTON_ID)) {
+            return;
+        }
+
+        // Ищем блок с модификацией по data-marker
         const labelElement = document.querySelector('[data-marker="modification-name/label"]');
         
-        if (!labelElement) return;
+        if (!labelElement) {
+            console.log('[TM] labelElement не найден');
+            return;
+        }
         
-        // Находим родительский контейнер (div.styles-module-root-oD3Gk)
+        // Находим родительский контейнер styles-module-root-oD3Gk
         const targetContainer = labelElement.parentElement;
         
-        if (targetContainer && !document.getElementById(BUTTON_ID)) {
-            const btn = createInlineButton();
-            btn.addEventListener('click', openModal);
-
-            // Вставляем кнопку ПОСЛЕ всех существующих детей контейнера
-            // Это разместит её справа от кнопок copy и history
-            targetContainer.appendChild(btn);
+        if (!targetContainer) {
+            console.log('[TM] targetContainer (parentElement) не найден');
+            return;
         }
+
+        console.log('[TM] Нашли targetContainer, добавляем кнопку');
+        
+        const btn = createInlineButton();
+        btn.addEventListener('click', openModal);
+
+        // Вставляем кнопку после всех существующих детей
+        targetContainer.appendChild(btn);
+        
+        console.log('[TM] Кнопка добавлена');
     }
 
-    // Запуск встраивания
+    // Добавляем модальное окно в body
     if (document.body) {
         document.body.appendChild(modalOverlay);
-        // Пробуем несколько раз с интервалом на случай медленной загрузки
-        setTimeout(injectButton, 100);
-        setTimeout(injectButton, 500);
-        setTimeout(injectButton, 1000);
     } else {
         document.addEventListener('DOMContentLoaded', () => {
             document.body.appendChild(modalOverlay);
-            setTimeout(injectButton, 100);
-            setTimeout(injectButton, 500);
-            setTimeout(injectButton, 1000);
         });
     }
 
-    const observer = new MutationObserver(injectButton);
-    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    // Пробуем добавить кнопку несколько раз с увеличенными интервалами
+    setTimeout(injectButton, 200);
+    setTimeout(injectButton, 600);
+    setTimeout(injectButton, 1200);
+    setTimeout(injectButton, 2000);
 
+    // Наблюдаем за изменениями в DOM
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            if (mutation.addedNodes.length > 0) {
+                injectButton();
+                break;
+            }
+        }
+    });
+    
+    observer.observe(document.documentElement, { 
+        childList: true, 
+        subtree: true 
+    });
+
+    // Пробуем сразу
     injectButton();
 })();
