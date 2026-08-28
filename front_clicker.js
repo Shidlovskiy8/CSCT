@@ -3,6 +3,40 @@
 
 const TARGET_MAP = {};
 
+// Безопасное чтение (Chrome Storage -> fallback на localStorage)
+async function getStorageData(keys) {
+    return new Promise((resolve) => {
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.get(keys, (res) => resolve(res || {}));
+        } else {
+            const result = {};
+            keys.forEach(key => {
+                const val = localStorage.getItem(`ac_${key}`) || localStorage.getItem(key);
+                if (val !== null) {
+                    result[key] = val;
+                }
+            });
+            resolve(result);
+        }
+    });
+}
+
+// Безопасная запись
+async function setStorageData(obj) {
+    return new Promise((resolve) => {
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.set(obj, resolve);
+        } else {
+            Object.entries(obj).forEach(([key, val]) => {
+                const strVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
+                localStorage.setItem(`ac_${key}`, strVal);
+                localStorage.setItem(key, strVal);
+            });
+            resolve();
+        }
+    });
+}
+
 // =================================================================
 // МОДУЛЬ БЛОКИРОВКИ РУЧНОГО СКРОЛЛА (ИСПРАВЛЕННЫЙ)
 // =================================================================
@@ -1020,13 +1054,11 @@ async function waitForFieldReady(locatorFn, timeoutMs = 3000, stepName = 'эле
 
 // --- ОСНОВНОЙ ПАЙПЛАЙН С ГАРАНТИРОВАННЫМ ДЕБАГОМ ---
 async function runPipeline() {
-    // 1. Создаем UI немедленно
     ui = new DebugUI();
     ui.setStatus('ИНИЦИАЛИЗАЦИЯ', '#ffb86c');
     ui.log('🚀 Запуск пайплайна...');
 
-    // 2. Таймер-сторож (Watchdog) для отслеживания зависаний
-    let currentTask = 'Чтение Chrome Storage';
+    let currentTask = 'Чтение хранилища';
     let watchdogTimer = null;
 
     const setStep = (statusText, taskDescription, statusColor = '#00aaff') => {
@@ -1034,7 +1066,6 @@ async function runPipeline() {
         ui.setStatus(statusText, statusColor);
         ui.log(`▶ [ШАГ]: ${taskDescription}`);
 
-        // Перезапускаем таймер зависания (8 секунд на один шаг)
         if (watchdogTimer) clearTimeout(watchdogTimer);
         watchdogTimer = setTimeout(() => {
             ui.setStatus('ЗАВИСАНИЕ', '#ff5555');
@@ -1050,10 +1081,12 @@ async function runPipeline() {
     ScrollLock.lock();
 
     try {
-        // --- 1. ПРОВЕРКА ФЛАГОВ ---
-        setStep('ПРОВЕРКА ФЛАГА', 'Чтение storage.local');
-        const storageData = await chrome.storage.local.get(['autoclick_active', 'selected_catalog', 'extracted_fields']);
-        const isActive = storageData.autoclick_active || localStorage.getItem('ac_autoclick_active') === 'true';
+        // --- 1. БЕЗОПАСНАЯ ПРОВЕРКА ФЛАГОВ ---
+        setStep('ПРОВЕРКА ФЛАГА', 'Чтение данных (GitHub / LocalStorage)');
+        const storageData = await getStorageData(['autoclick_active', 'selected_catalog', 'extracted_fields']);
+        
+        const rawActive = storageData.autoclick_active;
+        const isActive = rawActive === true || rawActive === 'true' || localStorage.getItem('ac_autoclick_active') === 'true';
 
         if (!isActive) {
             stopWatchdog();
@@ -1062,9 +1095,9 @@ async function runPipeline() {
             return;
         }
 
-        // --- 2. ПОДГОТОВКА ДАННЫХ ---
-        setStep('СБРОС ФЛАГОВ', 'Очистка storage и парсинг полей');
-        await chrome.storage.local.set({ autoclick_active: false });
+        // --- 2. СБРОС ФЛАГОВ И ПОДГОТОВКА ---
+        setStep('СБРОС ФЛАГОВ', 'Очистка флагов и парсинг полей');
+        await setStorageData({ autoclick_active: false });
         localStorage.removeItem('ac_autoclick_active');
 
         let selectedCatalog = storageData.selected_catalog || localStorage.getItem('ac_selected_catalog');
@@ -1080,13 +1113,13 @@ async function runPipeline() {
         if (!selectedCatalog) {
             stopWatchdog();
             ui.setStatus('ОШИБКА', '#ff5555');
-            ui.log('❌ Не выбран каталог (selected_catalog пуст в storage)', '#ff5555');
+            ui.log('❌ Не выбран каталог (selected_catalog пуст)', '#ff5555');
             return;
         }
 
         ui.setFields(extractedFields);
         ui.log(`📋 Выбран каталог: "${selectedCatalog}"`);
-        ui.log(`📋 Загружено полей для ввода: ${extractedFields.length}`);
+        ui.log(`📋 Загружено полей: ${extractedFields.length}`);
 
         // --- 3. СБРОС СОСТОЯНИЯ UI ---
         setStep('СБРОС DROPDOWN', 'Очистка предыдущих выпадающих списков');
