@@ -1150,56 +1150,46 @@ if (window.location.hostname.includes('avito.ru') && window.location.pathname.in
 
       // --- 2. ПОДГОТОВКА И ПАРСИНГ ДАННЫХ ---
       setStep('ПАРСИНГ', 'Парсинг полей и выбор каталога');
-
+      
       let selectedCatalog = config.catalog || storageData.selected_catalog || localStorage.getItem('ac_selected_catalog');
-      let extractedFieldsRaw = config.fields || storageData.extracted_fields || localStorage.getItem('ac_extracted_fields') || '[]';
-
+      
+      // Безопасный каскадный поиск непустого массива полей
       let extractedFields = [];
-      if (typeof extractedFieldsRaw === 'string') {
-        try { 
-          extractedFields = JSON.parse(extractedFieldsRaw); 
-        } catch(e) { 
-          extractedFields = []; 
+      const fieldCandidates = [
+        config.fields,
+        storageData.extracted_fields,
+        localStorage.getItem('ac_extracted_fields')
+      ];
+      
+      for (const cand of fieldCandidates) {
+        if (!cand) continue;
+        if (Array.isArray(cand) && cand.length > 0) {
+          extractedFields = cand;
+          break;
         }
-      } else if (Array.isArray(extractedFieldsRaw)) {
-        extractedFields = extractedFieldsRaw;
+        if (typeof cand === 'string') {
+          try {
+            const parsed = JSON.parse(cand);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              extractedFields = parsed;
+              break;
+            }
+          } catch(e) {}
+        }
       }
-
-      if (!selectedCatalog) {
+      
+      if (!selectedCatalog || selectedCatalog === 'Имя вашей категории') {
         stopWatchdog();
         ui.setStatus('ОШИБКА', '#ff5555');
-        ui.log('❌ Не выбран каталог (selected_catalog пуст)', '#ff5555');
+        ui.log(`❌ Некорректный каталог: "${selectedCatalog}"`, '#ff5555');
+        if (typeof ScrollLock !== 'undefined') ScrollLock.unlock();
         return;
       }
-
+      
       ui.setFields(extractedFields);
       ui.log(`📋 Выбран каталог: "${selectedCatalog}"`);
       ui.log(`📋 Загружено полей: ${extractedFields.length}`);
-
-      // --- 3. СБРОС СОСТОЯНИЯ UI ---
-      setStep('СБРОС DROPDOWN', 'Очистка предыдущих выпадающих списков');
-      if (typeof safeResetDropdownState === 'function') {
-        await safeResetDropdownState();
-      }
-
-      // --- 4. ДРУГАЯ КАТЕГОРИЯ ---
-      setStep('ПОИСК КНОПКИ', 'Поиск кнопки "Другая категория"');
-      const anotherCategoryBtn = await waitForFieldReady(() => {
-        const btn = document.querySelector('button[data-marker="another-category"]');
-        if (btn) return btn;
-        const buttons = Array.from(document.querySelectorAll('button'));
-        return buttons.find(b => b.innerText && normalizeText(b.innerText).includes('другая категория'));
-      }, 1500, 'кнопки "Другая категория"');
-
-      if (anotherCategoryBtn) {
-        setStep('КЛИК КНОПКИ', 'Нажатие "Другая категория"');
-        await triggerFullClick(anotherCategoryBtn);
-        ui.log('✅ Клик "Другая категория"', '#50fa7b');
-        await sleep(200);
-      } else {
-        ui.log('ℹ️ Кнопка "Другая категория" не найдена, продолжаем...', '#ffb86c');
-      }
-
+      
       // --- 5. ЗАГРУЗКА И ПОИСК ROUTE ---
       setStep('ЗАГРУЗКА ROUTE', 'Запрос fetchTableData()');
       let responseData;
@@ -1210,22 +1200,31 @@ if (window.location.hostname.includes('avito.ru') && window.location.pathname.in
         stopWatchdog();
         ui.setStatus('ОШИБКА СЕТИ', '#ff5555');
         ui.log(`❌ Ошибка загрузки таблицы: ${err.message || err}`, '#ff5555');
+        if (typeof ScrollLock !== 'undefined') ScrollLock.unlock();
         return;
       }
-
+      
       setStep('АНАЛИЗ ROUTE', 'Поиск категории в объекте route');
       const routeData = responseData.route || responseData;
-      const targetCatalogNorm = normalizeText(selectedCatalog);
-
-      let routeRow = routeData.find(r => {
-        const cat = normalizeText(parseTargetText(r.Catalog || r.catalog));
+      
+      // Унификация в массив
+      const routesArray = Array.isArray(routeData) 
+        ? routeData 
+        : Object.keys(routeData).map(k => ({ _key: k, ...(typeof routeData[k] === 'object' ? routeData[k] : { value: routeData[k] }) }));
+      
+      const targetCatalogNorm = typeof normalizeText === 'function' ? normalizeText(selectedCatalog) : selectedCatalog.toLowerCase().trim();
+      
+      let routeRow = routesArray.find(r => {
+        const rawCat = r.Catalog || r.catalog || r.name || r._key || '';
+        const cat = typeof normalizeText === 'function' ? normalizeText(rawCat) : String(rawCat).toLowerCase().trim();
         return cat && (targetCatalogNorm.includes(cat) || cat.includes(targetCatalogNorm));
       });
-
+      
       if (!routeRow) {
         stopWatchdog();
         ui.setStatus('НЕ НАЙДЕНО', '#ff5555');
         ui.log(`❌ Категория "${selectedCatalog}" не найдена в таблице route!`, '#ff5555');
+        if (typeof ScrollLock !== 'undefined') ScrollLock.unlock();
         return;
       }
 
