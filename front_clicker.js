@@ -2,8 +2,8 @@
 (function() {
     'use strict';
 
-    const WEBHOOK_URL = 'https://www.test.test';
-    const BUTTON_ID = 'webhook-sender-btn';
+    const WEBHOOK_URL = 'https://bpa-n8n-stage.k.avito.ru/webhook/d1022c79-45b8-4971-9712-53ccd03cbd25';
+    const BUTTON_ID = 'Автокликер';
 
     function extractCarParameters() {
         const data = {};
