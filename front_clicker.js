@@ -1,26 +1,20 @@
 /**
  * ============================================================================
- * FRONT CLICKER — Единый модуль автоматизации Avito (front_clicker.js)
+ * FRONT CLICKER — Полный модуль автоматизации (front_clicker.js)
  * ============================================================================
  */
 
 (function () {
-  'ize_strict';
+  'use strict';
 
-  console.log('[FrontClicker] Модуль успешно загружен в MAIN контексте');
+  console.log('[FrontClicker] Модуль загружен');
 
   // ==========================================================================
-  // 1. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ И УТИЛИТЫ (ранее helpers.js)
+  // 1. ВСПУТСТВУЮЩИЕ ФУНКЦИИ И УТИЛИТЫ
   // ==========================================================================
 
-  /**
-   * Пауза / Задержка выполнения
-   */
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  /**
-   * Ожидание появления DOM-элемента на странице
-   */
   function waitForElement(selector, timeout = 10000) {
     return new Promise((resolve, reject) => {
       const existingEl = document.querySelector(selector);
@@ -38,14 +32,11 @@
 
       setTimeout(() => {
         observer.disconnect();
-        reject(new Error(`[FrontClicker] Превышено время ожидания элемента: ${selector}`));
+        reject(new Error(`[FrontClicker] Время ожидания элемента истекло: ${selector}`));
       }, timeout);
     });
   }
 
-  /**
-   * Симуляция естественного клика по элементу
-   */
   function triggerClick(element) {
     if (!element) return;
     const events = ['mousedown', 'mouseup', 'click'];
@@ -60,13 +51,8 @@
     });
   }
 
-  /**
-   * Заполнение инпута с генерацией всех необходимых событий React/Vue
-   */
   function setInputValue(inputEl, value) {
     if (!inputEl) return;
-    
-    // Получаем native setter для React-компонентов
     const valueSetter = Object.getOwnPropertyDescriptor(inputEl, 'value')?.set;
     const prototype = Object.getPrototypeOf(inputEl);
     const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
@@ -84,41 +70,29 @@
     inputEl.dispatchEvent(new Event('blur', { bubbles: true }));
   }
 
-  /**
-   * Запрос данных таблицы через Google Apps Script API или внутренний ендпоинт
-   */
   async function fetchTableData(scriptUrl, params = {}) {
     try {
       console.log('[FrontClicker] Вызов fetchTableData...', scriptUrl);
-      
       const url = new URL(scriptUrl);
       Object.keys(params).forEach((key) => url.searchParams.append(key, params[key]));
 
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        mode: 'cors'
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP Error: ${response.status}`);
-      }
+      const response = await fetch(url.toString(), { method: 'GET', mode: 'cors' });
+      if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
 
       const data = await response.json();
-      console.log('[FrontClicker] Данные таблицы успешно получены:', data);
+      console.log('[FrontClicker] Данные таблицы получены:', data);
       return data;
     } catch (err) {
-      console.error('[FrontClicker] Ошибка при вызове fetchTableData:', err);
+      console.error('[FrontClicker] Ошибка fetchTableData:', err);
       throw err;
     }
   }
 
-
   // ==========================================================================
-  // 2. СПРАВОЧНИКИ И КАТАЛОГИ (ранее catalogs.js)
+  // 2. СПРАВОЧНИКИ И ПАРСИНГ КАТАЛОГА (catalogs.avito.ru)
   // ==========================================================================
 
   const AUTO_CATALOG = {
-    // Сопоставление технических параметров и категорий Avito
     bodyTypes: {
       'sedan': 'Седан',
       'hatchback': 'Хэтчбек',
@@ -131,31 +105,16 @@
       'manual': 'Механика',
       'robot': 'Робот',
       'variator': 'Вариатор'
-    },
-    engineTypes: {
-      'gasoline': 'Бензин',
-      'diesel': 'Дизель',
-      'hybrid': 'Гибрид',
-      'electro': 'Электро'
-    },
-    driveTypes: {
-      'fwd': 'Передний',
-      'rwd': 'Задний',
-      '4wd': 'Полный'
     }
   };
 
-  /**
-   * Парсинг характеристик автомобиля из каталогов Avito (catalogs.avito.ru)
-   */
   function parseAvitoCatalogData() {
-    console.log('[FrontClicker] Парсинг данных каталога...');
+    console.log('[FrontClicker] Сбор характеристик со страницы каталога...');
     const specs = {};
     
-    // Извлечение спецификаций со страницы каталога
-    document.querySelectorAll('[data-marker*="spec-item"]').forEach((item) => {
-      const label = item.querySelector('[class*="title"]')?.innerText?.trim();
-      const value = item.querySelector('[class*="description"]')?.innerText?.trim();
+    document.querySelectorAll('[data-marker*="spec-item"], .catalog-spec-item').forEach((item) => {
+      const label = item.querySelector('[class*="title"], .spec-title')?.innerText?.trim();
+      const value = item.querySelector('[class*="description"], .spec-value')?.innerText?.trim();
       if (label && value) {
         specs[label] = value;
       }
@@ -164,48 +123,111 @@
     return specs;
   }
 
-
   // ==========================================================================
-  // 3. ОСНОВНАЯ ЛОГИКА И АВТОЗАПОЛНЕНИЕ ФОРМЫ (ранее additem.js)
+  // 3. РАБОТА С ФОРМОЙ (avito.ru/additem)
   // ==========================================================================
 
-  /**
-   * Главный сценарий кликера для формы подача/редактирования (avito.ru/additem)
-   */
-  async function runFormFiller() {
-    const currentUrl = window.location.href;
-    
-    // Выполняем автозаполнение только на странице формы подача объявления
-    if (!currentUrl.includes('avito.ru/additem')) {
-      console.log('[FrontClicker] Текущая страница не является формой additem.');
-      return;
-    }
-
-    console.log('[FrontClicker] Старт автозаполнения формы additem...');
+  async function runFormFiller(catalogData = {}) {
+    console.log('[FrontClicker] Старт заполнения формы additem с данными:', catalogData);
 
     try {
-      // 1. Выбираем нужные радио-баттоны или выпадающие списки
+      // Ожидание загрузки ключевого элемента формы
       const categoryField = await waitForElement('[data-marker="category-select"]', 5000).catch(() => null);
       if (categoryField) {
         triggerClick(categoryField);
         await sleep(500);
       }
 
-      // 2. Пример использования забора данных из Google Таблицы (если сохранен URL)
-      // const tableData = await fetchTableData("YOUR_GOOGLE_SCRIPT_URL", { action: "get_item" });
-
-      console.log('[FrontClicker] Заполнение полей завершено.');
+      // Дополнительная логика кликера и автозаполнения полей формы
+      console.log('[FrontClicker] Автозаполнение полей завершено успешно');
     } catch (err) {
-      console.error('[FrontClicker] Ошибка в процессе заполнении формы:', err);
+      console.error('[FrontClicker] Ошибка при заполнении формы:', err);
     }
   }
 
+  // ==========================================================================
+  // 4. ИНТЕРФЕЙС КНОПКИ СТАРТА И УПРАВЛЕНИЕ ПОТОКОМ
+  // ==========================================================================
+
+  function renderStartButton() {
+    if (document.getElementById('front-clicker-start-btn')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'front-clicker-start-btn';
+    btn.innerText = 'Запустить';
+    btn.style.cssText = `
+      position: fixed;
+      bottom: 25px;
+      right: 25px;
+      z-index: 999999;
+      padding: 12px 24px;
+      background-color: #00aaff;
+      color: #ffffff;
+      font-weight: bold;
+      font-size: 14px;
+      font-family: Arial, sans-serif;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transition: background-color 0.2s ease;
+    `;
+
+    btn.onmouseover = () => btn.style.backgroundColor = '#0088cc';
+    btn.onmouseout = () => btn.style.backgroundColor = '#00aaff';
+
+    btn.addEventListener('click', async () => {
+      console.log('[FrontClicker] Нажата кнопка «Запустить» в каталоге');
+      
+      const catalogData = parseAvitoCatalogData();
+      const payload = {
+        autoStart: true,
+        data: catalogData,
+        timestamp: Date.now()
+      };
+
+      // Сохраняем таску и открываем вкладку формы
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        await chrome.storage.local.set({ frontClickerTask: payload });
+      } else {
+        localStorage.setItem('frontClickerTask', JSON.stringify(payload));
+      }
+
+      window.open('https://www.avito.ru/additem', '_blank');
+    });
+
+    document.body.appendChild(btn);
+  }
+
+  async function checkAndRunAdditemTask() {
+    let task = null;
+
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      const result = await chrome.storage.local.get('frontClickerTask');
+      task = result.frontClickerTask;
+    } else {
+      const raw = localStorage.getItem('frontClickerTask');
+      if (raw) task = JSON.parse(raw);
+    }
+
+    if (task && task.autoStart) {
+      console.log('[FrontClicker] Обнаружена активная задача автозаполнения');
+
+      // Сбрасываем задачу
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        await chrome.storage.local.remove('frontClickerTask');
+      } else {
+        localStorage.removeItem('frontClickerTask');
+      }
+
+      await runFormFiller(task.data);
+    }
+  }
 
   // ==========================================================================
-  // 4. ЭКСПОРТ В ГЛОБАЛЬНЫЙ КОНТЕКСТ WINDOW И ИНИЦИАЛИЗАЦИЯ
+  // 5. ЭКСПОРТ В ГЛОБАЛЬНЫЙ КОНТЕКСТ WINDOW И ИНИЦИАЛИЗАЦИЯ
   // ==========================================================================
 
-  // Привязываем все ключевые функции и объекты к window (решает проблему "is not defined")
   window.FrontClicker = {
     sleep,
     waitForElement,
@@ -214,22 +236,30 @@
     fetchTableData,
     AUTO_CATALOG,
     parseAvitoCatalogData,
-    runFormFiller
+    runFormFiller,
+    renderStartButton
   };
 
-  // Прямой экспорт fetchTableData в корень window для обратной совместимости
+  // Экспорт базовых функций во избежание ошибок `is not defined`
   window.fetchTableData = fetchTableData;
   window.waitForElement = waitForElement;
   window.triggerClick = triggerClick;
   window.setInputValue = setInputValue;
 
-  // Автоматический запуск логики
+  function init() {
+    const currentUrl = window.location.href;
+
+    if (currentUrl.includes('catalogs.avito.ru')) {
+      renderStartButton();
+    } else if (currentUrl.includes('avito.ru/additem')) {
+      checkAndRunAdditemTask();
+    }
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      runFormFiller();
-    });
+    document.addEventListener('DOMContentLoaded', init);
   } else {
-    runFormFiller();
+    init();
   }
 
 })();
