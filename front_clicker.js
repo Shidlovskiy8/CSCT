@@ -11,7 +11,7 @@
     if (window.__carParamsWebhookInjected) return;
     window.__carParamsWebhookInjected = true;
 
-    const WEBHOOK_URL = 'https://bpa-n8n-stage.k.avito.ru/webhook/d1022c79-45b8-4971-9712-53ccd03cbd25';
+    const WEBHOOK_URL = 'https://bpa-n8n-stage.k.avito.ru/webhook-test/d1022c79-45b8-4971-9712-53ccd03cbd25';
     const BUTTON_ID = 'tm-inline-webhook-btn';
 
     // 1. СОЗДАНИЕ ИНЛАЙН-КНОПКИ
