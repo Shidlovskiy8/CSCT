@@ -167,33 +167,26 @@
 
 
   // =================================================================
-  // 1. ТОЧКА ВХОДА №1: CATALOGS.AVITO.RU (Сбор данных и старт)
+  // 1. ТОЧКА ВХОДА №1: CATALOGS.AVITO.RU (Точный оригинал изначальной логики)
   // =================================================================
   if (window.location.hostname.includes('catalogs.avito.ru')) {
 
     function getSelectedCatalog() {
-      const breadcrumbEl = document.querySelector('nav[aria-label="Хлебные крошки"], div[class*="breadcrumbs"]');
-      if (breadcrumbEl) {
-        const links = Array.from(breadcrumbEl.querySelectorAll('a, span'));
-        if (links.length > 0) {
-          return links[links.length - 1].textContent.trim();
-        }
-      }
-      const titleEl = document.querySelector('h1');
+      const titleEl = document.querySelector('[class*="title-root-"]') || document.querySelector('h1');
       return titleEl ? titleEl.textContent.trim() : '';
     }
 
     function parseCatalogFields() {
       const fields = [];
-      const specItems = document.querySelectorAll('div[class*="spec-item"], tr, div[data-marker*="spec"]');
-
-      specItems.forEach(item => {
-        const labelEl = item.querySelector('span[class*="title"], td:first-child, div[class*="label"]');
-        const valueEl = item.querySelector('span[class*="value"], td:last-child, div[class*="value"]');
-
-        if (labelEl && valueEl) {
+      const labels = document.querySelectorAll('[class*="grid-item-label-"]');
+      
+      labels.forEach(labelEl => {
+        const parent = labelEl.parentElement;
+        if (!parent) return;
+        const valEl = parent.querySelector('[class*="grid-item-value-"]');
+        if (labelEl && valEl) {
           const name = labelEl.textContent.trim();
-          const value = valueEl.textContent.trim();
+          const value = valEl.textContent.trim();
           if (name && value) {
             fields.push({ name, value, type: 'text' });
           }
@@ -218,7 +211,6 @@
         extracted_fields: JSON.stringify(extractedFields)
       };
 
-      // Сохраняем в chrome.storage.local с резервным сохранением в localStorage
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
         await chrome.storage.local.set(payload);
       }
@@ -226,36 +218,32 @@
       localStorage.setItem('ac_selected_catalog', selectedCatalog);
       localStorage.setItem('ac_extracted_fields', JSON.stringify(extractedFields));
 
-      // Переход на страницу добавления объявления
       window.location.href = 'https://www.avito.ru/additem';
     }
 
     function injectAutoclickButton() {
       if (document.getElementById('ac-start-btn')) return;
 
+      const targetContainer = document.querySelector('[class*="desktop-controls-"]');
+      if (!targetContainer) return;
+
       const btn = document.createElement('button');
       btn.id = 'ac-start-btn';
-      btn.innerHTML = '⚡ Автоклик';
-      btn.style.cssText = `
-        position: fixed; bottom: 20px; right: 20px; z-index: 999999;
-        padding: 12px 24px; background: #00aaff; color: #fff; border: none;
-        border-radius: 50px; font-weight: bold; font-size: 14px;
-        box-shadow: 0 4px 15px rgba(0, 170, 255, 0.4); cursor: pointer;
-        transition: transform 0.2s, background-color 0.2s;
-      `;
+      btn.className = 'button-button-21p5n button-size-m-155W2 button-primary-3QWv5';
+      btn.type = 'button';
+      btn.style.marginLeft = '10px';
+      btn.innerHTML = '<span class="button-content-35f9k">⚡ Автоклик</span>';
 
-      btn.addEventListener('mouseenter', () => btn.style.transform = 'scale(1.05)');
-      btn.addEventListener('mouseleave', () => btn.style.transform = 'scale(1)');
       btn.addEventListener('click', handleStartButtonClick);
-
-      document.body.appendChild(btn);
+      targetContainer.appendChild(btn);
     }
 
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', injectAutoclickButton);
-    } else {
+    const observer = new MutationObserver(() => {
       injectAutoclickButton();
-    }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    injectAutoclickButton();
   }
 
 
@@ -280,13 +268,11 @@
       let ui = null;
 
       try {
-        // Сбрасываем триггер активности
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
           await chrome.storage.local.set({ autoclick_active: false });
         }
         localStorage.removeItem('ac_autoclick_active');
 
-        // Читаем сохраненные данные из chrome.storage.local или localStorage
         let selectedCatalog = null;
         let extractedFieldsRaw = '[]';
 
@@ -379,7 +365,6 @@
           }
         }
 
-        // Проход по дереву категорий (клики)
         for (let step of chain) {
           const targetNorm = normalizeText(step.value);
           ui.setStatus(`КЛИК ${step.name.toUpperCase()}`, '#00aaff');
@@ -418,7 +403,6 @@
         ui.setStatus('ПОДГОТОВКА ПОЛЕЙ', '#00aaff');
         ui.log('--- КАТЕГОРИИ ВЫБРАНЫ, ПЕРЕХОД К ПОЛЯМ ---', '#00aaff');
 
-        // Заполнение формы данными
         if (extractedFields.length > 0) {
           ui.log(`Запуск заполнения полей (всего: ${extractedFields.length})`);
           ui.setStatus('ЗАПОЛНЕНИЕ ПОЛЕЙ', '#00aaff');
