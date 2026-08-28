@@ -34,7 +34,6 @@
             justifyContent: 'center',
             cursor: 'pointer',
             marginLeft: '6px',
-            marginRight: '4px',
             flexShrink: '0',
             transition: 'background-color 0.2s ease',
             userSelect: 'none'
@@ -120,7 +119,6 @@
     cancelBtn.addEventListener('click', closeModal);
     closeBtn.addEventListener('click', closeModal);
 
-    // Замена GM_xmlhttpRequest на стандартный fetch
     submitBtn.addEventListener('click', async () => {
         const text = input.value.trim();
         if (!text) return;
@@ -169,16 +167,22 @@
         }
     });
 
-    // 3. ВСТРАИВАНИЕ КНОПКИ В DOM
+    // 3. ВСТРАИВАНИЕ КНОПКИ В DOM - ИСПРАВЛЕНО
     function injectButton() {
-        // Ищем блок с модификацией по data-marker
-        const targetContainer = document.querySelector('[data-marker="modification-name/label"]').closest('.styles-module-root-oD3Gk');
-
+        // Ищем блок с модификацией по data-marker="modification-name/label"
+        const labelElement = document.querySelector('[data-marker="modification-name/label"]');
+        
+        if (!labelElement) return;
+        
+        // Находим родительский контейнер (тот самый div.styles-module-root-oD3Gk)
+        const targetContainer = labelElement.parentElement;
+        
         if (targetContainer && !document.getElementById('tm-inline-n8n-btn')) {
             const btn = createInlineButton();
             btn.addEventListener('click', openModal);
 
-            // Вставляем кнопку после всех кнопок внутри контейнера (после copy/history кнопок)
+            // Вставляем кнопку ПОСЛЕ всех существующих детей контейнера
+            // Это разместит её справа от кнопок copy и history
             targetContainer.appendChild(btn);
         }
     }
@@ -186,12 +190,18 @@
     // Запуск встраивания
     if (document.body) {
         document.body.appendChild(modalOverlay);
+        // Небольшая задержка для уверенности что DOM загружен
+        setTimeout(injectButton, 100);
     } else {
-        document.addEventListener('DOMContentLoaded', () => document.body.appendChild(modalOverlay));
+        document.addEventListener('DOMContentLoaded', () => {
+            document.body.appendChild(modalOverlay);
+            setTimeout(injectButton, 100);
+        });
     }
 
     const observer = new MutationObserver(injectButton);
     observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
 
+    // Пробуем сразу после загрузки
     injectButton();
 })();
