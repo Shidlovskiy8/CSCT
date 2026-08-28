@@ -845,9 +845,10 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
             btn.disabled = true;
 
             try {
-                const catalogSpan = document.querySelector('span.styles-module-size_s-e9rn2') ||
-                                     document.querySelector('span[data-marker="modification/select-text"]') ||
-                                     document.querySelector('h1');
+                const catalogSpan = document.querySelector('span[data-marker="modification/select-text"]') ||
+                                    document.querySelector('[class*="modification-name"] span') ||
+                                    document.querySelector('h1') ||
+                                    document.querySelector('.styles-module-size_s-e9rn2'); // как резерв старый класс
                 const catalogText = catalogSpan ? catalogSpan.textContent.trim() : null;
 
                 if (!catalogText) {
