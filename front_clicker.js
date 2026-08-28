@@ -1,8 +1,6 @@
 (function() {
-    // 1. Укажите ваш URL для Webhook
-    const WEBHOOK_URL = 'https://bpa-n8n-stage.k.avito.ru/webhook/d1022c79-45b8-4971-9712-53ccd03cbd25';
+    const WEBHOOK_URL = 'https://your-webhook-url-here.com/endpoint';
 
-    // 2. Находим целевой контейнер для кнопки
     const container = document.querySelector('div.styles-module-root-oD3Gk');
     if (!container) {
         console.warn('Контейнер для кнопки автоклика не найден!');
@@ -13,7 +11,6 @@
         return;
     }
 
-    // 3. Создаем элемент кнопки
     const btn = document.createElement('button');
     btn.id = 'auto-click-webhook-btn';
     btn.type = 'button';
@@ -36,25 +33,28 @@
         gap: 4px;
     `;
 
-    // 4. Обработчик клика: сбор данных включая каталог и отправка на Webhook
     btn.addEventListener('click', async () => {
         const data = {};
 
-        // Парсим название каталога из указанного класса
-        const catalogElement = document.querySelector('span.styles-module-size_s-e9rn2');
+        // 1. Надежный поиск каталога (ищем любой текстовый блок или хлебные крошки/категорию сверху)
+        const catalogElement = document.querySelector('span[class*="styles-module-size_s"]') || 
+                               document.enciaribleXPath ? null : document.querySelector('h1 + div span, .breadcrumbs span, [data-marker*="category"]');
+        
+        // Если специфичный класс не сработал, попробуем найти текст каталога рядом с заголовком
         if (catalogElement) {
             data['catalog_name'] = catalogElement.textContent.trim();
+        } else {
+            // Запасной вариант: ищем по всему документу элементы похожие на категорию
+            const potentialCatalog = Array.from(document.querySelectorAll('span')).find(el => el.textContent.includes('Экскаваторы') || el.textContent.includes('Погрузчики'));
+            data['catalog_name'] = potentialCatalog ? potentialCatalog.textContent.trim() : 'Не найдено';
         }
 
-        // Собираем название модификации
+        // 2. Метка модификации
         const modLabel = container.querySelector('[data-marker="modification-name/label"]');
-        if (modLabel) {
-            data['modification_label'] = modLabel.textContent.trim();
-        }
+        data['modification_label'] = modLabel ? modLabel.textContent.trim() : '';
 
-        // Собираем все параметры из блока параметров
+        // 3. Все остальные параметры
         const paramItems = document.querySelectorAll('div.styles-module-param-RwXVL[data-marker="modification/param"]');
-        
         paramItems.forEach(item => {
             const nameElement = item.querySelector('[data-marker="modification/param-name-link"]');
             const valueElements = item.querySelectorAll('[data-marker="modification/value-name-link"]');
@@ -66,7 +66,7 @@
             }
         });
 
-        console.log('Собранные данные для отправки:', data);
+        console.log('Итоговые данные для отправки:', data);
         
         const originalText = btn.innerHTML;
         btn.innerHTML = '⏳ Отправка...';
