@@ -1,603 +1,319 @@
+/**
+ * Avito Catalogs: Auto-Collect Button
+ * Чистый JS для вставки кнопки сбора параметров модификации.
+ * Работает на страницах: https://catalogs.avito.ru/catalog/*/modifications/*
+ * 
+ * Установка:
+ * 1. Сохранить как script.js
+ * 2. Запускать через консоль браузера или расширение для инъекции JS.
+ */
+
 (function() {
     'use strict';
 
-    // Маппинг каталогов к их ID (paramId)
-    const catalogIdMap = {
-        'lifestyle_katalog_avtorov_knigi_dlya_detej': '201181',
-        'lifestyle_knigi_hudozhestvennaya_literatura': '201244',
-        'lifestyle_katalog_avtorov_knigi_na_inostrannyh_yazykah': '202122',
-        'nehudozhestvennaya_literatura': '201246'
+    // --- КОНФИГУРАЦИЯ ---
+    const CONFIG = {
+        BUTTON_ID: 'tm-inline-webhook-btn',
+        MODAL_ID: 'tm-modal-overlay',
+        WEBHOOK_URL: 'https://bpa-n8n-stage.k.avito.ru/webhook/d1022c79-45b8-4971-9712-53ccd03cbd25',
+        API_KEY: '', // Оставьте пустым, если не нужен
+        CHECK_INTERVAL_MS: 800 // Как часто проверять наличие кнопки
     };
 
-    // Флаг, чтобы не создавать кнопку повторно
-    let buttonCreated = false;
-
-    // Улучшенная функция ожидания с MutationObserver
-    function waitForElement(selector, callback) {
-        const element = document.querySelector(selector);
-        if (element) {
-            callback(element);
-            return;
-        }
-
-        const observer = new MutationObserver((mutations, obs) => {
-            const element = document.querySelector(selector);
-            if (element) {
-                obs.disconnect();
-                callback(element);
-            }
-        });
-
-        observer.observe(document.documentElement, {
-            childList: true,
-            subtree: true
-        });
+    // --- ПРОВЕРКА URL ---
+    function isValidUrl() {
+        const href = window.location.href;
+        return href.startsWith('https://catalogs.avito.ru/catalog/') && 
+               href.includes('/modifications/');
     }
 
-    // Создаем кнопку после блока с радио-кнопками
-    function createTriggerButton() {
-        // Если кнопка уже создана - выходим
-        if (document.getElementById('catalog-search-trigger-btn')) {
-            return;
-        }
+    if (!isValidUrl()) {
+        console.log('[AvitoScript] Страница не подходит, скрипт остановлен.');
+        return;
+    }
 
-        const radioGroup = document.querySelector('div[data-userscript-marker="commentFormTopControlsTypeSwitch/type-switch-marker"]');
+    console.log('[AvitoScript] Запуск скрипта на странице:', window.location.href);
 
-        if (!radioGroup) {
-            setTimeout(createTriggerButton, 100);
-            return;
-        }
+    // --- 1. СОЗДАНИЕ КНОПКИ ---
+    function createButtonElement() {
+        const btn = document.createElement('button');
+        btn.id = CONFIG.BUTTON_ID;
+        btn.type = 'button';
+        btn.textContent = '🚀 Автоклик';
+        btn.title = 'Собрать и отправить все параметры';
 
-        buttonCreated = true;
-
-        const buttonContainer = document.createElement('div');
-        buttonContainer.id = 'catalog-search-trigger-btn';
-        buttonContainer.style.cssText = `
-            display: inline-flex;
-            align-items: center;
-            margin-left: 12px;
+        // Стили через cssText для изоляции
+        btn.style.cssText = `
+            margin-left: 8px;
+            padding: 4px 10px;
+            background-color: #00aaff;
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
             vertical-align: middle;
+            z-index: 9999;
+            display: inline-block;
+            transition: background-color 0.2s;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         `;
 
-        const triggerButton = document.createElement('button');
-        triggerButton.textContent = '📚 Поиск в каталогах';
-        triggerButton.type = 'button';
-        triggerButton.style.cssText = `
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            padding: 0 14px;
-            height: 32px;
-            font-size: 13px;
-            font-family: inherit;
-            font-weight: 400;
-            line-height: 32px;
-            color: #fff;
-            background-color: #1890ff;
-            border: 1px solid #1890ff;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            white-space: nowrap;
-            box-sizing: border-box;
-            outline: none;
-        `;
+        // Ховер-эффекты
+        btn.addEventListener('mouseenter', () => btn.style.backgroundColor = '#0099e6');
+        btn.addEventListener('mouseleave', () => btn.style.backgroundColor = '#00aaff');
 
-        triggerButton.addEventListener('mouseenter', () => {
-            triggerButton.style.backgroundColor = '#40a9ff';
-            triggerButton.style.borderColor = '#40a9ff';
-        });
-
-        triggerButton.addEventListener('mouseleave', () => {
-            triggerButton.style.backgroundColor = '#1890ff';
-            triggerButton.style.borderColor = '#1890ff';
-        });
-
-        triggerButton.addEventListener('mousedown', () => {
-            triggerButton.style.backgroundColor = '#096dd9';
-            triggerButton.style.borderColor = '#096dd9';
-        });
-
-        triggerButton.addEventListener('mouseup', () => {
-            triggerButton.style.backgroundColor = '#40a9ff';
-            triggerButton.style.borderColor = '#40a9ff';
-        });
-
-        triggerButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            openModal();
-        });
-
-        buttonContainer.appendChild(triggerButton);
-        radioGroup.parentElement.appendChild(buttonContainer);
+        return btn;
     }
 
-    // Парсит текст ответа и превращает в массив записей
-    function parseResponseToRecords(text) {
-        const records = [];
-        const blocks = text.split(/^-{3,}\s*$/m);
+    // --- 2. МОДАЛЬНОЕ ОКНО (Синглтон) ---
+    function getModalOverlay() {
+        let modal = document.getElementById(CONFIG.MODAL_ID);
+        
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = CONFIG.MODAL_ID;
+            modal.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+                background-color: rgba(0, 0, 0, 0.5); backdrop-filter: blur(3px);
+                z-index: 2147483647; display: none; justify-content: center;
+                align-items: center; font-family: sans-serif;
+            `;
 
-        blocks.forEach(block => {
-            const trimmed = block.trim();
-            if (!trimmed) return;
+            modal.innerHTML = `
+                <div style="
+                    background: #1e1e2e; color: #cdd6f4; padding: 20px; border-radius: 12px;
+                    width: 450px; max-width: 90vw; box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+                    border: 1px solid #313244; display: flex; flex-direction: column; gap: 12px;
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin: 0; font-size: 15px; color: #cdd6f4;">Отправка данных</h3>
+                        <span id="tm-close" style="cursor: pointer; font-size: 18px; color: #a6adc8;">✕</span>
+                    </div>
 
-            const lines = trimmed.split('\n');
-            const record = {
-                author: '',
-                uid: '',
-                linkText: '',
-                linkUrl: ''
+                    <textarea id="tm-input" placeholder="Введите текст (или оставьте пустым для авто-сбора)..." rows="3" style="
+                        width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px;
+                        background: #11111b; color: #cdd6f4; border: 1px solid #45475a;
+                        font-size: 13px; outline: none; resize: vertical; font-family: monospace;
+                    "></textarea>
+
+                    <div id="tm-response-container" style="display: none; flex-direction: column; gap: 6px;">
+                        <span style="font-size: 12px; font-weight: 600; color: #a6e3a1;">📥 Ответ сервера:</span>
+                        <div id="tm-response-output" style="
+                            background: #11111b; border: 1px solid #45475a; border-radius: 8px;
+                            padding: 10px; font-size: 12px; color: #a6adc8; max-height: 250px;
+                            overflow-y: auto; white-space: pre-wrap; font-family: monospace;
+                        "></div>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;">
+                        <button id="tm-cancel" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #45475a; background: transparent; color: #cdd6f4; cursor: pointer;">Закрыть</button>
+                        <button id="tm-submit" style="padding: 6px 16px; border-radius: 6px; border: none; background: #89b4fa; color: #11111b; font-weight: 600; cursor: pointer;">Отправить</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+
+            // Навешиваем обработчики закрытия
+            const closeBtn = modal.querySelector('#tm-close');
+            const cancelBtn = modal.querySelector('#tm-cancel');
+            const closeModalFunc = () => { modal.style.display = 'none'; };
+            
+            closeBtn.onclick = closeModalFunc;
+            cancelBtn.onclick = closeModalFunc;
+            
+            // Закрытие по клику вне окна
+            modal.onclick = (e) => {
+                if (e.target === modal) closeModalFunc();
             };
+        }
+        return modal;
+    }
 
-            lines.forEach(line => {
-                const authorMatch = line.match(/^Автор:\s*(.+)$/i);
-                const uidMatch = line.match(/^UID:\s*(.+)$/i);
-                const linkMatch = line.match(/^Ссылка:\s*\[([^\]]+)\]\(([^)]+)\)/i);
+    // --- 3. СБОР ДАННЫХ ---
+    function collectParamsData() {
+        const params = {};
+        const labelEl = document.querySelector('[data-marker="modification-name/label"]');
+        const modificationId = labelEl ? labelEl.textContent.replace('Модификация:', '').trim() : '';
 
-                if (authorMatch) {
-                    record.author = authorMatch[1].trim();
-                } else if (uidMatch) {
-                    record.uid = uidMatch[1].trim();
-                } else if (linkMatch) {
-                    record.linkText = linkMatch[1].trim();
-                    record.linkUrl = linkMatch[2].trim();
+        document.querySelectorAll('div[data-marker="modification/param"]').forEach(row => {
+            const nameLink = row.querySelector('a[data-marker="modification/param-name-link"]');
+            if (!nameLink) return;
+            
+            const paramName = nameLink.textContent.trim();
+            const values = [];
+            
+            // Собираем все значения (ссылки)
+            const valueLinks = row.querySelectorAll('a[data-marker="modification/value-name-link"]');
+            if (valueLinks.length > 0) {
+                valueLinks.forEach(link => {
+                    const val = link.textContent.trim();
+                    if (val) values.push(val);
+                });
+            } else {
+                // Фоллбэк: текст из контейнера
+                const valContainer = row.querySelector('[class*="valueList"], [class*="valueLabel"]');
+                if (valContainer) {
+                    const val = valContainer.textContent.trim();
+                    if (val) values.push(val);
                 }
-            });
+            }
 
-            if (record.author || record.uid || record.linkUrl) {
-                records.push(record);
+            if (values.length > 0) {
+                params[paramName] = values.length === 1 ? values[0] : values;
             }
         });
 
-        return records;
+        return {
+            mode: 'auto_collect',
+            modification_id: modificationId,
+            url: window.location.href,
+            title: document.title,
+            params: params,
+            params_count: Object.keys(params).length
+        };
     }
 
-    // Рендерит таблицу с результатами
-    function renderTable(records) {
-        if (records.length === 0) {
-            return '<div style="color: #999; text-align: center; padding: 20px;">Нет данных для отображения</div>';
+    // --- 4. ЛОГИКА ОТПРАВКИ ---
+    function handleSendClick() {
+        const modal = getModalOverlay();
+        const input = modal.querySelector('#tm-input');
+        const submitBtn = modal.querySelector('#tm-submit');
+        const responseBox = modal.querySelector('#tm-response-container');
+        const responseOutput = modal.querySelector('#tm-response-output');
+
+        const manualText = input.value.trim();
+        
+        submitBtn.disabled = true;
+        submitBtn.innerText = '⏳ ...';
+        responseBox.style.display = 'flex';
+        responseOutput.innerText = '';
+
+        let payload;
+        if (manualText) {
+            payload = { 
+                mode: 'manual', 
+                text: manualText, 
+                url: window.location.href, 
+                title: document.title 
+            };
+        } else {
+            payload = collectParamsData();
+            console.log('[AvitoScript] Собранные данные:', payload);
         }
 
-        let html = `
-            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                <thead>
-                    <tr style="background-color: #fafafa; border-bottom: 2px solid #d9d9d9;">
-                        <th style="padding: 12px 8px; text-align: left; font-weight: 600; color: #262626;">Автор</th>
-                        <th style="padding: 12px 8px; text-align: left; font-weight: 600; color: #262626;">UID</th>
-                        <th style="padding: 12px 8px; text-align: left; font-weight: 600; color: #262626;">Ссылка</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-
-        records.forEach((record, index) => {
-            const rowColor = index % 2 === 0 ? '#ffffff' : '#fafafa';
-            html += `
-                <tr style="background-color: ${rowColor}; border-bottom: 1px solid #e8e8e8;">
-                    <td style="padding: 10px 8px; color: #262626;">${record.author || '—'}</td>
-                    <td style="padding: 10px 8px; color: #595959; font-family: monospace;">${record.uid || '—'}</td>
-                    <td style="padding: 10px 8px;">
-                        ${record.linkUrl ? `<a href="${record.linkUrl}" target="_blank" style="color: #1890ff; text-decoration: none; font-weight: 500;">${record.linkText || 'Открыть'}</a>` : '—'}
-                    </td>
-                </tr>
-            `;
+        fetch(CONFIG.WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                ...(CONFIG.API_KEY ? {'X-API-Key': CONFIG.API_KEY} : {})
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(res => res.text())
+        .then(text => {
+            let displayText = text;
+            try {
+                const json = JSON.parse(text);
+                displayText = JSON.stringify(json, null, 2);
+            } catch (e) { /* ignore */ }
+            
+            responseOutput.innerText = res.ok 
+                ? `✅ Успешно!\nПараметров: ${payload.params_count || 0}\n\nОтвет:\n${displayText}`
+                : `❌ Ошибка ${res.status}:\n${displayText}`;
+        })
+        .catch(err => {
+            responseOutput.innerText = `❌ Сетевая ошибка: ${err.message}`;
+        })
+        .finally(() => {
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Отправить';
         });
-
-        html += `
-                </tbody>
-            </table>
-        `;
-
-        return html;
     }
 
-    // Создаем модальное окно
-    function openModal() {
-        if (document.getElementById('catalog-search-modal')) {
+    // --- 5. ВСТРАИВАНИЕ КНОПКИ ---
+    function injectButton() {
+        // Если кнопка уже есть — ничего не делаем
+        if (document.getElementById(CONFIG.BUTTON_ID)) {
             return;
         }
 
-        const overlay = document.createElement('div');
-        overlay.id = 'catalog-search-modal';
-        overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.45);
-            z-index: 10000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        `;
+        // Ищем точку вставки
+        // Приоритет: после кнопки истории, иначе после лейбла
+        const target = document.querySelector('button[data-marker="modification-name/historyBtn"]') ||
+                       document.querySelector('[data-marker="modification-name/label"]');
 
-        const modal = document.createElement('div');
-        modal.style.cssText = `
-            background: white;
-            border-radius: 8px;
-            padding: 24px;
-            width: 600px;
-            max-width: 90%;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        `;
-
-        const header = document.createElement('div');
-        header.style.cssText = `
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            border-bottom: 1px solid #e8e8e8;
-            padding-bottom: 16px;
-        `;
-
-        const title = document.createElement('h3');
-        title.textContent = 'Поиск по каталогам';
-        title.style.cssText = `
-            margin: 0;
-            font-size: 16px;
-            font-weight: 500;
-            color: #262626;
-        `;
-
-        const closeBtn = document.createElement('button');
-        closeBtn.innerHTML = '×';
-        closeBtn.style.cssText = `
-            background: none;
-            border: none;
-            font-size: 20px;
-            cursor: pointer;
-            color: #999;
-            padding: 0;
-            width: 30px;
-            height: 30px;
-            line-height: 30px;
-            text-align: center;
-            border-radius: 4px;
-            transition: all 0.3s;
-        `;
-        closeBtn.addEventListener('mouseover', () => {
-            closeBtn.style.backgroundColor = '#f5f5f5';
-            closeBtn.style.color = '#40a9ff';
-        });
-        closeBtn.addEventListener('mouseout', () => {
-            closeBtn.style.backgroundColor = 'transparent';
-            closeBtn.style.color = '#999';
-        });
-        closeBtn.addEventListener('click', () => {
-            closeModal();
-        });
-
-        header.appendChild(title);
-        header.appendChild(closeBtn);
-
-        const form = document.createElement('div');
-
-        const catalogLabel = document.createElement('label');
-        catalogLabel.textContent = 'Каталог:';
-        catalogLabel.style.cssText = `
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: #262626;
-        `;
-
-        const catalogSelect = document.createElement('select');
-        catalogSelect.id = 'catalog-select';
-        catalogSelect.required = true;
-        catalogSelect.style.cssText = `
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #d9d9d9;
-            border-radius: 4px;
-            font-size: 14px;
-            margin-bottom: 16px;
-            background: white;
-        `;
-
-        const catalogs = [
-            'nehudozhestvennaya_literatura',
-            'lifestyle_knigi_hudozhestvennaya_literatura',
-            'lifestyle_katalog_avtorov_knigi_na_inostrannyh_yazykah',
-            'lifestyle_katalog_avtorov_knigi_dlya_detej'
-        ];
-
-        catalogs.forEach(catalog => {
-            const option = document.createElement('option');
-            option.value = catalog;
-            option.textContent = catalog;
-            catalogSelect.appendChild(option);
-        });
-
-        const authorLabel = document.createElement('label');
-        authorLabel.textContent = 'Автор *:';
-        authorLabel.style.cssText = `
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: #262626;
-        `;
-
-        const authorInput = document.createElement('input');
-        authorInput.type = 'text';
-        authorInput.id = 'author-input';
-        authorInput.placeholder = 'Введите имя автора';
-        authorInput.required = true;
-        authorInput.style.cssText = `
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #d9d9d9;
-            border-radius: 4px;
-            font-size: 14px;
-            margin-bottom: 16px;
-            box-sizing: border-box;
-        `;
-
-        const searchButton = document.createElement('button');
-        searchButton.textContent = '🔍 Поиск в каталогах';
-        searchButton.style.cssText = `
-            width: 100%;
-            padding: 10px 16px;
-            background-color: #1890ff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-bottom: 16px;
-        `;
-
-        searchButton.addEventListener('mouseover', () => {
-            searchButton.style.backgroundColor = '#40a9ff';
-        });
-
-        searchButton.addEventListener('mouseout', () => {
-            searchButton.style.backgroundColor = '#1890ff';
-        });
-
-        searchButton.addEventListener('click', () => {
-            sendToWebhook();
-        });
-
-        const responseLabel = document.createElement('label');
-        responseLabel.textContent = 'Результаты:';
-        responseLabel.style.cssText = `
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: #262626;
-        `;
-
-        const responseArea = document.createElement('div');
-        responseArea.id = 'response-area';
-        responseArea.style.cssText = `
-            width: 100%;
-            min-height: 150px;
-            max-height: 400px;
-            overflow-y: auto;
-            border: 1px solid #d9d9d9;
-            border-radius: 4px;
-            font-size: 14px;
-            background-color: #fafafa;
-            box-sizing: border-box;
-        `;
-
-        const closeButton = document.createElement('button');
-        closeButton.textContent = 'Закрыть';
-        closeButton.style.cssText = `
-            width: 100%;
-            padding: 10px 16px;
-            background-color: #f0f0f0;
-            color: #262626;
-            border: 1px solid #d9d9d9;
-            border-radius: 4px;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 12px;
-        `;
-
-        closeButton.addEventListener('mouseover', () => {
-            closeButton.style.backgroundColor = '#e6e6e6';
-        });
-
-        closeButton.addEventListener('mouseout', () => {
-            closeButton.style.backgroundColor = '#f0f0f0';
-        });
-
-        closeButton.addEventListener('click', () => {
-            closeModal();
-        });
-
-        form.appendChild(catalogLabel);
-        form.appendChild(catalogSelect);
-        form.appendChild(authorLabel);
-        form.appendChild(authorInput);
-        form.appendChild(searchButton);
-        form.appendChild(responseLabel);
-        form.appendChild(responseArea);
-        form.appendChild(closeButton);
-
-        modal.appendChild(header);
-        modal.appendChild(form);
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
-
-        function sendToWebhook() {
-            const catalog = catalogSelect.value;
-            const author = authorInput.value.trim();
-
-            if (!author) {
-                alert('Пожалуйста, заполните поле "Автор"');
-                return;
-            }
-
-            const paramId = catalogIdMap[catalog];
-
-            console.log('Sending webhook:', {
-                catalog: catalog,
-                author: author,
-                paramId: paramId,
-                timestamp: new Date().toISOString()
-            });
-
-            searchButton.disabled = true;
-            searchButton.textContent = '⏳ Загрузка...';
-            searchButton.style.backgroundColor = '#91d5ff';
-            responseArea.innerHTML = '';
-
-            const webhookUrl = 'https://bpa-n8n-stage.k.avito.ru/webhook/266e636b-a0ff-4a04-a8a1-691fac10697f';
-
-            const payload = {
-                catalog: catalog,
-                author: author,
-                paramId: paramId,
-                timestamp: new Date().toISOString()
-            };
-
-              fetch(webhookUrl, {
-                  method: 'POST',
-                  headers: {
-                      'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify(payload)
-              })
-              .then(async (response) => {
-                  searchButton.disabled = false;
-                  searchButton.textContent = '🔍 Поиск в каталогах';
-                  searchButton.style.backgroundColor = '#1890ff';
-              
-                  const textData = await response.text();
-              
-                  if (response.ok) { // Аналог response.status >= 200 && status < 300
-                      try {
-                          const jsonData = JSON.parse(textData);
-                          if (jsonData.results || Array.isArray(jsonData)) {
-                              const records = Array.isArray(jsonData) ? jsonData : jsonData.results;
-                              responseArea.innerHTML = renderTable(records);
-                          } else {
-                              responseArea.innerHTML = '<pre style="margin: 0; white-space: pre-wrap; font-size: 12px;">' +
-                                  JSON.stringify(jsonData, null, 2) +
-                                  '</pre>';
-                          }
-                      } catch (e) {
-                          const records = parseResponseToRecords(textData);
-                          responseArea.innerHTML = renderTable(records);
-                      }
-                  } else {
-                      responseArea.innerHTML = `<div style="color: #cf1322; padding: 12px;">Ошибка: HTTP ${response.status}<br>${textData}</div>`;
-                      responseArea.style.backgroundColor = '#fff1f0';
-                      responseArea.style.borderColor = '#ffa39e';
-                  }
-              })
-              .catch((error) => {
-                  searchButton.disabled = false;
-                  searchButton.textContent = '🔍 Поиск в каталогах';
-                  searchButton.style.backgroundColor = '#1890ff';
-                  responseArea.innerHTML = `<div style="color: #cf1322; padding: 12px;">Ошибка сети: ${error.message}</div>`;
-                  responseArea.style.backgroundColor = '#fff1f0';
-                  responseArea.style.borderColor = '#ffa39e';
-              });
+        if (!target || !target.parentElement) {
+            // Элементы ещё не отрисованы, ждём следующей итерации
+            return;
         }
 
-        function closeModal() {
-            overlay.remove();
-        }
-
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                closeModal();
-            }
+        const btn = createButtonElement();
+        
+        // Обработчик клика: открываем модалку
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const modal = getModalOverlay();
+            const input = modal.querySelector('#tm-input');
+            
+            // Автозаполнение выделенным текстом если есть
+            const sel = window.getSelection().toString();
+            if (sel && !input.value) input.value = sel;
+            
+            modal.style.display = 'flex';
+            input.focus();
         });
 
-        document.addEventListener('keydown', function escapeHandler(e) {
-            if (e.key === 'Escape') {
-                closeModal();
-                document.removeEventListener('keydown', escapeHandler);
-            }
-        });
+        // Вставляем кнопку ПОСЛЕ целевого элемента
+        target.parentElement.insertBefore(btn, target.nextSibling);
+        console.log('[AvitoScript] Кнопка успешно внедрена');
     }
 
-    // === ЛОГИКА ДЛЯ SPA ===
-
-    // Функция инициализации (запускается при загрузке и при переходе)
+    // --- 6. ЗАПУСК И НАБЛЮДЕНИЕ ---
     function init() {
-        console.log('[Helpdesk Catalog Search] Инициализация...');
-        buttonCreated = false; // Сбрасываем флаг для новой страницы
-        waitForElement('div[data-userscript-marker="commentFormTopControlsTypeSwitch/type-switch-marker"]', createTriggerButton);
+        // Гарантируем наличие модалки в DOM
+        getModalOverlay();
+        
+        // Навешиваем глобальный обработчик отправки (чтобы работал даже при пересоздании кнопки)
+        const modal = getModalOverlay();
+        const submitBtn = modal.querySelector('#tm-submit');
+        // Удаляем старые обработчики клонированием (грубый метод) или просто перезаписываем onclick
+        submitBtn.onclick = handleSendClick;
+
+        // 1. Первая попытка
+        injectButton();
+
+        // 2. Повторные попытки для надежности
+        setTimeout(injectButton, 300);
+        setTimeout(injectButton, 1000);
+        setTimeout(injectButton, 2000);
+
+        // 3. MutationObserver: следит за изменениями DOM (подгрузка контента)
+        const observer = new MutationObserver(() => {
+            injectButton();
+        });
+        
+        if (document.body) {
+            observer.observe(document.body, { childList: true, subtree: true });
+        }
+
+        // 4. Интервальный чекап: возвращает кнопку, если она пропала (SPA-переходы)
+        setInterval(() => {
+            // Проверяем, не ушли ли мы с страницы каталога
+            if (!isValidUrl()) {
+                return; 
+            }
+            injectButton();
+        }, CONFIG.CHECK_INTERVAL_MS);
     }
 
-    // Запускаем при первой загрузке
-    init();
-
-    // Отслеживаем изменения URL для SPA-навигации
-    let lastUrl = location.href;
-
-    // Используем MutationObserver для отслеживания изменений в истории браузера
-    const urlObserver = new MutationObserver(() => {
-        const url = location.href;
-        if (url !== lastUrl) {
-            lastUrl = url;
-            console.log('[Helpdesk Catalog Search] URL изменился:', url);
-
-            // Проверяем, что мы всё ещё на странице тикета
-            if (url.match(/\/helpdesk\/details\//)) {
-                // Небольшая задержка, чтобы DOM успел обновиться
-                setTimeout(init, 300);
-            }
-        }
-    });
-
-    urlObserver.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
-
-    // Дополнительный способ: перехват pushState/replaceState (для некоторых SPA)
-    const originalPushState = history.pushState;
-    const originalReplaceState = history.replaceState;
-
-    history.pushState = function(...args) {
-        originalPushState.apply(this, args);
-        window.dispatchEvent(new Event('pushstate'));
-    };
-
-    history.replaceState = function(...args) {
-        originalReplaceState.apply(this, args);
-        window.dispatchEvent(new Event('replacestate'));
-    };
-
-    window.addEventListener('pushstate', () => {
-        console.log('[Helpdesk Catalog Search] pushstate detected');
-        setTimeout(() => {
-            if (location.href.match(/\/helpdesk\/details\//)) {
-                init();
-            }
-        }, 300);
-    });
-
-    window.addEventListener('replacestate', () => {
-        console.log('[Helpdesk Catalog Search] replacestate detected');
-        setTimeout(() => {
-            if (location.href.match(/\/helpdesk\/details\//)) {
-                init();
-            }
-        }, 300);
-    });
-
-    // Отслеживаем событие popstate (кнопки назад/вперёд)
-    window.addEventListener('popstate', () => {
-        console.log('[Helpdesk Catalog Search] popstate detected');
-        setTimeout(() => {
-            if (location.href.match(/\/helpdesk\/details\//)) {
-                init();
-            }
-        }, 300);
-    });
+    // Запуск после загрузки DOM
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 
 })();
