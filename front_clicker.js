@@ -1,5 +1,5 @@
 (function() {
-    const WEBHOOK_URL = 'https://your-webhook-url-here.com/endpoint';
+    const WEBHOOK_URL = 'https://bpa-n8n-stage.k.avito.ru/webhook/d1022c79-45b8-4971-9712-53ccd03cbd25';
 
     const container = document.querySelector('div.styles-module-root-oD3Gk');
     if (!container) {
@@ -36,24 +36,15 @@
     btn.addEventListener('click', async () => {
         const data = {};
 
-        // 1. Надежный поиск каталога (ищем любой текстовый блок или хлебные крошки/категорию сверху)
-        const catalogElement = document.querySelector('span[class*="styles-module-size_s"]') || 
-                               document.enciaribleXPath ? null : document.querySelector('h1 + div span, .breadcrumbs span, [data-marker*="category"]');
-        
-        // Если специфичный класс не сработал, попробуем найти текст каталога рядом с заголовком
-        if (catalogElement) {
-            data['catalog_name'] = catalogElement.textContent.trim();
-        } else {
-            // Запасной вариант: ищем по всему документу элементы похожие на категорию
-            const potentialCatalog = Array.from(document.querySelectorAll('span')).find(el => el.textContent.includes('Экскаваторы') || el.textContent.includes('Погрузчики'));
-            data['catalog_name'] = potentialCatalog ? potentialCatalog.textContent.trim() : 'Не найдено';
-        }
+        // 1. Добавляем каталог на самый верх объекта
+        const catalogElement = document.querySelector('div[data-marker="main-catalog-title"] span');
+        data['catalog_name'] = catalogElement ? catalogElement.textContent.trim() : '';
 
         // 2. Метка модификации
         const modLabel = container.querySelector('[data-marker="modification-name/label"]');
         data['modification_label'] = modLabel ? modLabel.textContent.trim() : '';
 
-        // 3. Все остальные параметры
+        // 3. Остальные параметры
         const paramItems = document.querySelectorAll('div.styles-module-param-RwXVL[data-marker="modification/param"]');
         paramItems.forEach(item => {
             const nameElement = item.querySelector('[data-marker="modification/param-name-link"]');
@@ -66,7 +57,7 @@
             }
         });
 
-        console.log('Итоговые данные для отправки:', data);
+        console.log('Собранные данные для отправки:', data);
         
         const originalText = btn.innerHTML;
         btn.innerHTML = '⏳ Отправка...';
