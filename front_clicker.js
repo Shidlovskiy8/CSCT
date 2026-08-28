@@ -1,6 +1,6 @@
 (function() {
-    // 1. Укажите ваш URL для Webhook (замените на нужный адрес)
-    const WEBHOOK_URL = 'https://your-webhook-url-here.com/endpoint';
+    // 1. Укажите ваш URL для Webhook
+    const WEBHOOK_URL = 'https://bpa-n8n-stage.k.avito.ru/webhook/d1022c79-45b8-4971-9712-53ccd03cbd25';
 
     // 2. Находим целевой контейнер для кнопки
     const container = document.querySelector('div.styles-module-root-oD3Gk');
@@ -9,7 +9,6 @@
         return;
     }
 
-    // Проверяем, не была ли кнопка уже добавлена
     if (container.querySelector('#auto-click-webhook-btn')) {
         return;
     }
@@ -20,7 +19,6 @@
     btn.type = 'button';
     btn.innerHTML = '🚀 Автоклик';
     
-    // Стили для кнопки (соответствуют вашему примеру)
     btn.style.cssText = `
         margin-left: 8px;
         padding: 4px 10px;
@@ -38,11 +36,17 @@
         gap: 4px;
     `;
 
-    // 4. Обработчик клика: сбор данных и отправка на Webhook
+    // 4. Обработчик клика: сбор данных включая каталог и отправка на Webhook
     btn.addEventListener('click', async () => {
         const data = {};
 
-        // Собираем название модификации (если нужно)
+        // Парсим название каталога из указанного класса
+        const catalogElement = document.querySelector('span.styles-module-size_s-e9rn2');
+        if (catalogElement) {
+            data['catalog_name'] = catalogElement.textContent.trim();
+        }
+
+        // Собираем название модификации
         const modLabel = container.querySelector('[data-marker="modification-name/label"]');
         if (modLabel) {
             data['modification_label'] = modLabel.textContent.trim();
@@ -57,24 +61,18 @@
             
             if (nameElement) {
                 const paramName = nameElement.textContent.trim();
-                
-                // Собираем значения (их может быть несколько, например, комплектации)
                 const values = Array.from(valueElements).map(el => el.textContent.trim());
-                
-                // Если значений несколько, запишем массивом, если одно — строкой
                 data[paramName] = values.length > 1 ? values : (values[0] || '');
             }
         });
 
         console.log('Собранные данные для отправки:', data);
         
-        // Визуальная индикация клика
         const originalText = btn.innerHTML;
         btn.innerHTML = '⏳ Отправка...';
         btn.style.backgroundColor = 'rgb(255, 140, 0)';
 
         try {
-            // Отправка данных на Webhook
             const response = await fetch(WEBHOOK_URL, {
                 method: 'POST',
                 headers: {
@@ -95,13 +93,11 @@
             btn.style.backgroundColor = 'rgb(220, 53, 69)';
         }
 
-        // Возвращаем исходный вид кнопки через 2 секунды
         setTimeout(() => {
             btn.innerHTML = originalText;
             btn.style.backgroundColor = 'rgb(0, 170, 255)';
         }, 2000);
     });
 
-    // Добавляем кнопку в конец контейнера
     container.appendChild(btn);
 })();
