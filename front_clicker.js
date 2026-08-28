@@ -4,26 +4,38 @@
 const TARGET_MAP = {};
 
 // =================================================================
-// МОДУЛЬ БЛОКИРОВКИ РУЧНОГО СКРОЛЛА
+// МОДУЛЬ БЛОКИРОВКИ РУЧНОГО СКРОЛЛА (ИСПРАВЛЕННЫЙ)
 // =================================================================
 class ScrollLock {
     static isLocked = false;
     static originalOverflow = '';
 
-    static preventDefaultHandler(e) {
+    static preventDefaultHandler = (e) => {
+        // Разрешаем события внутри UI отладчика
         if (e.target && e.target.closest('#autoclick-debug-ui')) {
             return;
         }
-        e.preventDefault();
-    }
-
-    static preventKeysHandler(e) {
-        if (e.target && e.target.closest('#autoclick-debug-ui')) return;
-        const keys = [32, 33, 34, 35, 36, 37, 38, 39, 40];
-        if (keys.includes(e.keyCode)) {
+        if (e.cancelable) {
             e.preventDefault();
         }
-    }
+    };
+
+    static preventKeysHandler = (e) => {
+        if (e.target && e.target.closest('#autoclick-debug-ui')) return;
+        
+        // Разрешаем ввод в поля формы, даже если скрипт в режиме блокировки
+        const isInputField = e.target && (
+            e.target.tagName === 'INPUT' || 
+            e.target.tagName === 'TEXTAREA' || 
+            e.target.isContentEditable
+        );
+        if (isInputField) return;
+
+        const keys = [32, 33, 34, 35, 36, 37, 38, 39, 40];
+        if (keys.includes(e.keyCode) && e.cancelable) {
+            e.preventDefault();
+        }
+    };
 
     static lock() {
         if (this.isLocked) return;
@@ -41,12 +53,13 @@ class ScrollLock {
         this.isLocked = false;
         document.body.style.overflow = this.originalOverflow;
 
-        window.removeEventListener('wheel', this.preventDefaultHandler);
-        window.removeEventListener('touchmove', this.preventDefaultHandler);
-        window.removeEventListener('keydown', this.preventKeysHandler);
+        // Передаем { passive: false } при отписке, чтобы браузер точно снял Listener
+        window.removeEventListener('wheel', this.preventDefaultHandler, { passive: false });
+        window.removeEventListener('touchmove', this.preventDefaultHandler, { passive: false });
+        window.removeEventListener('keydown', this.preventKeysHandler, { passive: false });
     }
 }
-
+    
 class DebugUI {
     constructor() {
         this.container = null;
