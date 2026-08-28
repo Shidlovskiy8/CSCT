@@ -22,6 +22,6 @@
       "description": "avito-autofill",
       "script_url": "avito-autofill.js",
       "auto_run": true
-    },
+    }
   ]
 }
