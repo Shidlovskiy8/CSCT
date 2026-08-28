@@ -4,10 +4,7 @@
     // -----------------------------------------------------------------
     // КОНФИГУРАЦИЯ GOOGLE SHEETS API
     // -----------------------------------------------------------------
-    // Укажите URL вашего опубликованного Google Apps Script (Web App)
     const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID_HERE/exec';
-
-    // Key для хранения конфигурации полей в localStorage
     const STORAGE_CACHE_KEY = 'gs_fields_config';
 
     // -----------------------------------------------------------------
@@ -105,59 +102,7 @@
     }
 
     // -----------------------------------------------------------------
-    // UI МЕНЕДЖЕР (Логирование и интерфейс)
-    // -----------------------------------------------------------------
-    const ui = {
-        panel: null,
-        logContainer: null,
-
-        init() {
-            if (document.getElementById('ac-control-panel')) return;
-
-            const container = document.createElement('div');
-            container.id = 'ac-control-panel';
-            container.style.cssText = `
-                position: fixed; top: 20px; right: 20px; z-index: 999999;
-                background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a;
-                border-radius: 8px; padding: 12px; font-family: monospace; font-size: 12px;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.4); width: 360px;
-            `;
-
-            container.innerHTML = `
-                <div style="display:flex; justify-between; align-items:center; margin-bottom:8px;">
-                    <b style="color:#89b4fa; font-size:14px;">🚀 Avito AutoFill v2.0</b>
-                    <button id="ac-close-btn" style="background:none; border:none; color:#f38ba8; cursor:pointer;">✖</button>
-                </div>
-                <textarea id="ac-input-text" rows="5" placeholder="Вставьте данные списком:&#10;[1. list] Производитель: params[112916] ➔ &quot;Acer&quot;&#10;Модель: params[112912] ➔ &quot;Aspire&quot;" style="width:100%; background:#11111b; color:#a6adc8; border:1px solid #313244; border-radius:4px; padding:6px; box-sizing:border-box; resize:vertical; font-size:11px;"></textarea>
-                <div style="display:flex; gap:6px; margin-top:8px;">
-                    <button id="ac-start-btn" style="flex:1; background:#a6e3a1; color:#11111b; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer;">▶ Запустить заполнение</button>
-                    <button id="ac-sync-gs-btn" style="background:#89b4fa; color:#11111b; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer;">🔄 БД GS</button>
-                </div>
-                <div id="ac-log-container" style="margin-top:8px; max-height:150px; overflow-y:auto; background:#11111b; padding:6px; border-radius:4px; border:1px solid #313244; font-size:10px;"></div>
-            `;
-
-            document.body.appendChild(container);
-            this.panel = container;
-            this.logContainer = container.querySelector('#ac-log-container');
-
-            container.querySelector('#ac-close-btn').onclick = () => container.remove();
-            container.querySelector('#ac-start-btn').onclick = () => processManualInput();
-            container.querySelector('#ac-sync-gs-btn').onclick = () => fetchTableData(true);
-        },
-
-        log(msg, color = '#cdd6f4') {
-            if (!this.logContainer) return;
-            const item = document.createElement('div');
-            item.style.color = color;
-            item.style.marginBottom = '2px';
-            item.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-            this.logContainer.appendChild(item);
-            this.logContainer.scrollTop = this.logContainer.scrollHeight;
-        }
-    };
-
-    // -----------------------------------------------------------------
-    // ИНТЕГРАЦИЯ С GOOGLE SHEETS API (Стандартный Fetch & LocalStorage)
+    // ИНТЕГРАЦИЯ С GOOGLE SHEETS API
     // -----------------------------------------------------------------
     async function fetchTableData(forceRefresh = false) {
         const cached = localStorage.getItem(STORAGE_CACHE_KEY);
@@ -520,7 +465,60 @@
     }
 
     // -----------------------------------------------------------------
-    // ИНИЦИАЛИЗАЦИЯ ПОСЛЕ ВНЕДРЕНИЯ (Content Script / Extension Inject)
+    // UI МЕНЕДЖЕР (С прямой привязкой обработчиков событий)
+    // -----------------------------------------------------------------
+    const ui = {
+        panel: null,
+        logContainer: null,
+
+        init() {
+            if (document.getElementById('ac-control-panel')) return;
+
+            const container = document.createElement('div');
+            container.id = 'ac-control-panel';
+            container.style.cssText = `
+                position: fixed; top: 20px; right: 20px; z-index: 999999;
+                background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a;
+                border-radius: 8px; padding: 12px; font-family: monospace; font-size: 12px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.4); width: 360px;
+            `;
+
+            container.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <b style="color:#89b4fa; font-size:14px;">🚀 Avito AutoFill v2.0</b>
+                    <button id="ac-close-btn" style="background:none; border:none; color:#f38ba8; cursor:pointer;">✖</button>
+                </div>
+                <textarea id="ac-input-text" rows="5" placeholder="Вставьте данные списком:&#10;[1. list] Производитель: params[112916] ➔ &quot;Acer&quot;&#10;Модель: params[112912] ➔ &quot;Aspire&quot;" style="width:100%; background:#11111b; color:#a6adc8; border:1px solid #313244; border-radius:4px; padding:6px; box-sizing:border-box; resize:vertical; font-size:11px;"></textarea>
+                <div style="display:flex; gap:6px; margin-top:8px;">
+                    <button id="ac-start-btn" type="button" style="flex:1; background:#a6e3a1; color:#11111b; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer;">▶ Запустить заполнение</button>
+                    <button id="ac-sync-gs-btn" type="button" style="background:#89b4fa; color:#11111b; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer;">🔄 БД GS</button>
+                </div>
+                <div id="ac-log-container" style="margin-top:8px; max-height:150px; overflow-y:auto; background:#11111b; padding:6px; border-radius:4px; border:1px solid #313244; font-size:10px;"></div>
+            `;
+
+            document.body.appendChild(container);
+            this.panel = container;
+            this.logContainer = container.querySelector('#ac-log-container');
+
+            // Явная привязка через addEventListener (гарантирует работу в Content Scripts)
+            container.querySelector('#ac-close-btn').addEventListener('click', () => container.remove());
+            container.querySelector('#ac-start-btn').addEventListener('click', () => processManualInput());
+            container.querySelector('#ac-sync-gs-btn').addEventListener('click', () => fetchTableData(true));
+        },
+
+        log(msg, color = '#cdd6f4') {
+            if (!this.logContainer) return;
+            const item = document.createElement('div');
+            item.style.color = color;
+            item.style.marginBottom = '2px';
+            item.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            this.logContainer.appendChild(item);
+            this.logContainer.scrollTop = this.logContainer.scrollHeight;
+        }
+    };
+
+    // -----------------------------------------------------------------
+    // ИНИЦИАЛИЗАЦИЯ ПОСЛЕ ВНЕДРЕНИЯ
     // -----------------------------------------------------------------
     function start() {
         ui.init();
