@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1",
   "modules": [
     {
       "id": "search_in_catalogs",
@@ -17,10 +17,35 @@
       "auto_run": true
     },
     {
-      "id": "front_clicker",
-      "title": "Сборка подачи на фронте для скриншота",
-      "description": "Автоматическое заполнеие форм подачи по клику из модификации из каталога",
-      "script_url": "front_clicker.js",
+      "id": "front_clicker_helpers_ui",
+      "title": "Front Clicker — Helpers & UI",
+      "category": "Autofill",
+      "description": "Утилиты клика, логгер и интерфейс отладки",
+      "script_url": "front_clicker/helpers.js",
+      "auto_run": true
+    },
+    {
+      "id": "front_clicker_ui",
+      "title": "Front Clicker — Debug UI",
+      "category": "Autofill",
+      "description": "Модуль боковой панели отладки и блокировки прокрутки",
+      "script_url": "front_clicker/ui.js",
+      "auto_run": true
+    },
+    {
+      "id": "front_clicker_api",
+      "title": "Front Clicker — Table API",
+      "category": "Autofill",
+      "description": "Загрузка и кэширование данных Google Таблиц",
+      "script_url": "front_clicker/googleTableApi.js",
+      "auto_run": true
+    },
+    {
+      "id": "front_clicker_filler",
+      "title": "Front Clicker — Form Filler",
+      "category": "Autofill",
+      "description": "Автоматическое заполнение полей, списков и радиокнопок",
+      "script_url": "front_clicker/formFiller.js",
       "auto_run": true
     }
   ]
