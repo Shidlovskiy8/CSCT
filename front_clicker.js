@@ -11,7 +11,7 @@
     const WEBHOOK_URL = 'https://bpa-n8n-stage.k.avito.ru/webhook/d1022c79-45b8-4971-9712-53ccd03cbd25';
     const API_KEY = ''; 
 
-    // Создание модального окна для отображения отправленных данных
+    // Создание модального окна с текстовым полем для ввода комментария/описания
     const modalOverlay = document.createElement('div');
     Object.assign(modalOverlay.style, {
         position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
@@ -31,23 +31,34 @@
                 <span id="tm-close" style="cursor: pointer; font-size: 18px; color: #a6adc8;">✕</span>
             </div>
 
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label for="tm-user-input" style="font-size: 12px; color: #a6adc8;">Ваше сообщение / комментарий:</label>
+                <textarea id="tm-user-input" rows="3" placeholder="Введите текст, который отправится вместе с данными..." style="
+                    background: #11111b; border: 1px solid #45475a; border-radius: 8px;
+                    padding: 8px; font-size: 12px; color: #cdd6f4; resize: vertical; font-family: sans-serif;
+                "></textarea>
+            </div>
+
             <div id="tm-response-container" style="display: flex; flex-direction: column; gap: 6px;">
                 <span style="font-size: 12px; font-weight: 600; color: #a6e3a1;" id="tm-status-title">📥 Ответ сервера:</span>
                 <div id="tm-response-output" style="
                     background: #11111b; border: 1px solid #45475a; border-radius: 8px;
-                    padding: 10px; font-size: 12px; color: #a6adc8; max-height: 250px;
+                    padding: 10px; font-size: 12px; color: #a6adc8; max-height: 200px;
                     overflow-y: auto; white-space: pre-wrap; font-family: monospace;
                 "></div>
             </div>
 
             <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;">
                 <button id="tm-cancel" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #45475a; background: transparent; color: #cdd6f4; cursor: pointer;">Закрыть</button>
+                <button id="tm-submit" style="padding: 6px 14px; border-radius: 6px; border: none; background: #ff6600; color: #ffffff; cursor: pointer; font-weight: 600;">Отправить</button>
             </div>
         </div>
     `;
 
     const cancelBtn = modalOverlay.querySelector('#tm-cancel');
     const closeBtn = modalOverlay.querySelector('#tm-close');
+    const submitBtn = modalOverlay.querySelector('#tm-submit');
+    const userInput = modalOverlay.querySelector('#tm-user-input');
     const responseOutput = modalOverlay.querySelector('#tm-response-output');
     const statusTitle = modalOverlay.querySelector('#tm-status-title');
 
@@ -59,23 +70,22 @@
     closeBtn.addEventListener('click', closeModal);
 
     // Функция сбора параметров из DOM
-    function collectModificationData() {
+    function collectModificationData(customMessage = '') {
         const rootContainer = document.querySelector('.styles-module-root-I6AxT');
         const data = {
             url: window.location.href,
             title: document.title,
+            message: customMessage,
             parameters: {}
         };
 
         if (!rootContainer) return data;
 
-        // Извлечение названия модификации
         const labelEl = rootContainer.querySelector('[data-marker="modification-name/label"]');
         if (labelEl) {
             data.modificationName = labelEl.textContent.trim();
         }
 
-        // Извлечение всех параметров характеристики
         const paramRows = rootContainer.querySelectorAll('[data-marker="modification/param"]');
         paramRows.forEach(row => {
             const nameLink = row.querySelector('[data-marker="modification/param-name-link"]');
@@ -91,22 +101,35 @@
         return data;
     }
 
-    // Обработчик нажатия на кнопку отправки
-    async function handleButtonClick(btnInstance) {
-        const payload = collectModificationData();
+    let activeBtnInstance = null;
 
-        btnInstance.style.opacity = '0.6';
-        btnInstance.style.pointerEvents = 'none';
+    // При клике на иконку просто открываем модальное окно и очищаем старый вывод
+    function handleIconClick() {
+        userInput.value = '';
+        responseOutput.innerText = 'Ожидание отправки...';
+        statusTitle.style.color = '#89b4fa';
+        statusTitle.textContent = 'ℹ️ Статус:';
+        modalOverlay.style.display = 'flex';
+        userInput.focus();
+    }
+
+    // Кнопка «Отправить» внутри модального окна
+    submitBtn.addEventListener('click', async () => {
+        const messageText = userInput.value.trim();
+        const payload = collectModificationData(messageText);
+
+        submitBtn.style.opacity = '0.6';
+        submitBtn.style.pointerEvents = 'none';
 
         const headers = { 'Content-Type': 'application/json' };
         if (API_KEY) headers['X-API-Key'] = API_KEY;
 
-        modalOverlay.style.display = 'flex';
         statusTitle.style.color = '#89b4fa';
         statusTitle.textContent = '⏳ Отправка данных...';
         responseOutput.innerText = JSON.stringify(payload, null, 2);
 
         try {
+            // Отправка через background-скрипт (или напрямую, если CORS настроен)
             const res = await fetch(WEBHOOK_URL, {
                 method: 'POST',
                 headers: headers,
@@ -134,16 +157,16 @@
             statusTitle.textContent = '❌ Ошибка сети:';
             responseOutput.innerText = err.message;
         } finally {
-            btnInstance.style.opacity = '1';
-            btnInstance.style.pointerEvents = 'auto';
+            submitBtn.style.opacity = '1';
+            submitBtn.style.pointerEvents = 'auto';
         }
-    }
+    });
 
     // Создание элемента кнопки
     function createInlineButton() {
         const btn = document.createElement('div');
         btn.id = 'tm-inline-webhook-btn';
-        btn.title = 'Отправить параметры на вебхук';
+        btn.title = 'Открыть окно отправки параметров';
 
         Object.assign(btn.style, {
             width: '24px',
@@ -172,12 +195,11 @@
 
         btn.addEventListener('mouseenter', () => btn.style.backgroundColor = '#e65c00');
         btn.addEventListener('mouseleave', () => btn.style.backgroundColor = '#ff6600');
-        btn.addEventListener('click', () => handleButtonClick(btn));
+        btn.addEventListener('click', handleIconClick);
 
         return btn;
     }
 
-    // Встраивание кнопки справа от плашки модификации
     function injectButton() {
         const targetContainer = document.querySelector('.styles-module-root-oD3Gk');
 
