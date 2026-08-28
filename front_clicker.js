@@ -679,6 +679,451 @@ async function fillFormField(field) {
     return true;
 }
 
+// =================================================================
+// 1. СТРАНИЦА: CATALOGS.AVITO.RU
+// =================================================================
+if (window.location.hostname.includes('catalogs.avito.ru')) {
+    let preloadedTableData = null;
+    fetchTableData().then(data => { preloadedTableData = data; }).catch(() => {});
 
+    let buttonInjected = false;
 
+    function injectButton() {
+        if (buttonInjected) return;
+
+        const targetEl = document.querySelector('button[data-marker="modification-name/historyBtn"]') ||
+              document.querySelector('[class*="modification-name"]') ||
+              document.querySelector('h1');
+
+        if (!targetEl) return;
+
+        const existingBtn = targetEl.parentNode?.querySelector('button[textContent*="Автоклик"]');
+        if (existingBtn) {
+            buttonInjected = true;
+            return;
+        }
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = '🚀 Автоклик';
+        btn.style.cssText = `
+        margin-left: 8px; padding: 4px 10px; background-color: #00aaff;
+        color: #ffffff; border: none; border-radius: 4px; cursor: pointer;
+        font-size: 12px; font-weight: bold; vertical-align: middle; z-index: 9999;
+    `;
+
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            btn.textContent = '⏳ Сбор...';
+            btn.disabled = true;
+
+            try {
+                const catalogSpan = document.querySelector('span.styles-module-size_s-e9rn2') ||
+                      document.querySelector('span[data-marker="modification/select-text"]') ||
+                      document.querySelector('h1');
+                const catalogText = catalogSpan ? catalogSpan.textContent.trim() : null;
+
+                if (!catalogText) {
+                    alert('Не удалось определить название каталога на странице!');
+                    return;
+                }
+
+                let dynamicValues = [];
+                const catalogTextNorm = normalizeText(catalogText);
+
+                const tableData = preloadedTableData || await fetchTableData();
+                const fieldsConfig = tableData.fields || [];
+
+                if (fieldsConfig.length > 0) {
+                    const matchingFieldsConfig = fieldsConfig.filter(cfg => {
+                        const fieldCatalog = cfg.Catalog || cfg.catalog || cfg.catalog_name;
+                        if (!fieldCatalog) return false;
+                        const cfgCatNorm = normalizeText(parseTargetText(fieldCatalog));
+                        return cfgCatNorm && (catalogTextNorm.includes(cfgCatNorm) || cfgCatNorm.includes(catalogTextNorm));
+                    });
+
+                    const pageParamsMap = new Map();
+
+                    document.querySelectorAll('div[data-marker="modification/param"]').forEach(row => {
+                        const nameLink = row.querySelector('a[data-marker="modification/param-name-link"]');
+                        if (!nameLink) return;
+
+                        const paramNameKey = normalizeText(nameLink.textContent);
+                        const valLinks = Array.from(row.querySelectorAll('a[data-marker="modification/value-name-link"]'));
+
+                        if (valLinks.length > 0) {
+                            const combinedValues = valLinks.map(a => a.textContent.trim()).filter(Boolean).join(', ');
+                            pageParamsMap.set(paramNameKey, combinedValues);
+                        } else {
+                            const valContainer = row.querySelector('[class*="valueList"], [class*="valueContainer"], span');
+                            if (valContainer) {
+                                pageParamsMap.set(paramNameKey, valContainer.textContent.trim());
+                            }
+                        }
+                    });
+
+                    for (const cfg of matchingFieldsConfig) {
+                        const fieldName = cfg.value;
+                        if (!fieldName) continue;
+
+                        const paramTarget = cfg.value_front_target || fieldName;
+                        const paramType = cfg.value_type || "list";
+                        const normFieldName = normalizeText(fieldName);
+
+                        const tableDefaultVal = cfg.default_value || cfg.defaultValue || cfg.default;
+                        const rawCustomType = cfg.custom_value_type || cfg.customValueType || "";
+                        const customType = String(rawCustomType).trim().toLowerCase();
+                        let customVal = cfg.custom_value || cfg.customValue || "";
+
+                        const pageParsedValue = pageParamsMap.get(normFieldName) || null;
+
+                        let val = null;
+                        let isDefault = false;
+
+                        if (customType === 'catalog') {
+                            if (pageParsedValue) {
+                                customVal = pageParsedValue;
+                            } else if (fieldName.toLowerCase().includes('модификац')) {
+                                customVal = catalogText;
+                            }
+                        }
+
+                        if (tableDefaultVal && String(tableDefaultVal).trim() !== "") {
+                            val = String(tableDefaultVal).trim();
+                            isDefault = true;
+                        } else {
+                            val = pageParsedValue ? pageParsedValue.split(',')[0].trim() : null;
+                            if (!val && fieldName.toLowerCase().includes('модификац')) {
+                                val = catalogText;
+                            }
+                        }
+
+                        let userSelectedValue = null;
+                        if ((customType === 'list' || customType === 'catalog') && customVal) {
+                            const options = String(customVal).split(',').map(opt => opt.trim()).filter(Boolean);
+                            if (options.length > 0) {
+                                btn.textContent = `⏳ Выбор: ${fieldName}`;
+                                userSelectedValue = await promptUserForCustomValue(fieldName, options);
+
+                                if (userSelectedValue === null) {
+                                    btn.textContent = '🚀 Автоклик';
+                                    btn.disabled = false;
+                                    return;
+                                }
+                            }
+                        }
+
+                        if (userSelectedValue) {
+                            val = userSelectedValue;
+                        }
+
+                        if (val || customVal) {
+                            dynamicValues.push({
+                                name: fieldName,
+                                type: paramType,
+                                target: paramTarget,
+                                value: val,
+                                default_value: tableDefaultVal,
+                                custom_value_type: customType,
+                                custom_value: customVal,
+                                isDefault: isDefault
+                            });
+                        }
+                    }
+
+                    dynamicValues.sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));
+                }
+
+                let categoryChainStr = '';
+                const routeData = tableData.route || tableData;
+                if (Array.isArray(routeData)) {
+                    let routeRow = routeData.find(r => {
+                        const cat = normalizeText(parseTargetText(r.Catalog || r.catalog));
+                        return cat && (catalogTextNorm.includes(cat) || cat.includes(catalogTextNorm));
+                    });
+
+                    if (routeRow) {
+                        const catSteps = [];
+                        if (routeRow.category) {
+                            catSteps.push(resolveTarget(routeRow.category));
+                        }
+
+                        const stepKeys = Object.keys(routeRow)
+                            .filter(key => /^step\d+$/i.test(key))
+                            .sort((a, b) => parseInt(a.replace(/\D/g, ''), 10) - parseInt(b.replace(/\D/g, ''), 10));
+
+                        stepKeys.forEach(k => {
+                            if (routeRow[k]) {
+                                catSteps.push(resolveTarget(routeRow[k]));
+                            }
+                        });
+
+                        if (catSteps.length > 0) {
+                            categoryChainStr = catSteps.join(' / ');
+                        }
+                    }
+                }
+
+                const clipboardLines = [];
+
+                if (categoryChainStr) {
+                    clipboardLines.push(`Категория: ${categoryChainStr}`);
+                    clipboardLines.push('');
+                }
+
+                dynamicValues.forEach(f => {
+                    let finalVal = parseTargetText(f.value);
+                    if (!finalVal && f.default_value) {
+                        finalVal = parseTargetText(f.default_value) || String(f.default_value).trim();
+                    }
+                    clipboardLines.push(`${f.name}: «${finalVal || ''}»`);
+                });
+
+                if (clipboardLines.length > 0) {
+                    copyToClipboard(clipboardLines.join('\n'));
+                }
+
+                const jsonFields = JSON.stringify(dynamicValues);
+                await chrome.storage.local.set('selected_catalog', catalogText);
+                await chrome.storage.local.set('extracted_fields', jsonFields);
+                await chrome.storage.local.set('autoclick_active', true);
+
+                try {
+                    localStorage.setItem('ac_selected_catalog', catalogText);
+                    localStorage.setItem('ac_extracted_fields', jsonFields);
+                    localStorage.setItem('ac_autoclick_active', 'true');
+                } catch(e) {}
+
+                window.open('https://www.avito.ru/additem', '_blank');
+
+            } catch (err) {
+                console.error("[AutoClicker Error]", err);
+                alert(`Ошибка автокликера: ${err.message || err}`);
+            } finally {
+                btn.textContent = '🚀 Автоклик';
+                btn.disabled = false;
+            }
+        });
+
+        if (targetEl.parentNode) {
+            targetEl.parentNode.insertBefore(btn, targetEl.nextSibling);
+            buttonInjected = true;
+        }
+    }
+
+    let lastHref = window.location.href;
+    const urlObserver = new MutationObserver(() => {
+        if (window.location.href !== lastHref) {
+            lastHref = window.location.href;
+            buttonInjected = false;
+            injectButton();
+        }
+    });
+    urlObserver.observe(document.head, { childList: true, subtree: true });
+
+    const observer = new MutationObserver(() => {
+        injectButton();
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    injectButton();
+}
+
+// =================================================================
+// 2. СТРАНИЦА: WWW.AVITO.RU/ADDITEM
+// =================================================================
+if (window.location.hostname.includes('avito.ru') && window.location.pathname.includes('/additem')) {
+
+    const isActive = chrome.storage.local.get('autoclick_active', false) || localStorage.getItem('ac_autoclick_active') === 'true';
+    if (!isActive) return;
+
+    async function runPipeline() {
+        ScrollLock.lock();
+
+        try {
+            await chrome.storage.local.set('autoclick_active', false);
+            localStorage.removeItem('ac_autoclick_active');
+
+            let selectedCatalog = chrome.storage.local.get('selected_catalog', null) || localStorage.getItem('ac_selected_catalog');
+            let extractedFieldsRaw = chrome.storage.local.get('extracted_fields', null) || localStorage.getItem('ac_extracted_fields') || '[]';
+
+            let extractedFields = [];
+            try { extractedFields = JSON.parse(extractedFieldsRaw); } catch(e) { extractedFields = []; }
+
+            if (!selectedCatalog) return;
+
+            ui = new DebugUI();
+            ui.setStatus('ЗАПУСК', '#ffcc00');
+            ui.setFields(extractedFields);
+            ui.log(`Кликер запущен для: "${selectedCatalog}"`);
+
+            await safeResetDropdownState();
+
+            const anotherCategoryBtn = await waitForFieldReady(() => {
+                const btn = document.querySelector('button[data-marker="another-category"]');
+                if (btn) return btn;
+                const buttons = Array.from(document.querySelectorAll('button'));
+                return buttons.find(b => b.innerText && normalizeText(b.innerText).includes('другая категория'));
+            }, 1200);
+
+            if (anotherCategoryBtn) {
+                await triggerFullClick(anotherCategoryBtn);
+                ui.log('Клик "Другая категория"', '#50fa7b');
+                await sleep(200);
+            }
+
+            ui.setStatus('ЗАГРУЗКА', '#00aaff');
+            let responseData;
+            try {
+                responseData = await fetchTableData();
+                ui.log('Таблица загружена', '#50fa7b');
+            } catch (err) {
+                ui.setStatus('ОШИБКА СЕТИ', '#ff5555');
+                ui.log(`❌ Ошибка загрузки: ${err}`, '#ff5555');
+                return;
+            }
+
+            const routeData = responseData.route || responseData;
+            const targetCatalogNorm = normalizeText(selectedCatalog);
+
+            let routeRow = routeData.find(r => {
+                const cat = normalizeText(parseTargetText(r.Catalog || r.catalog));
+                return cat && (targetCatalogNorm.includes(cat) || cat.includes(targetCatalogNorm));
+            });
+
+            if (!routeRow) {
+                ui.setStatus('НЕ НАЙДЕНО', '#ff5555');
+                ui.log(`❌ Категория "${selectedCatalog}" не найдена в route!`, '#ff5555');
+                return;
+            }
+
+            const getSuggestValue = (val) => String(val || '').trim().toUpperCase() === 'TRUE';
+            const chain = [];
+
+            if (routeRow.category) {
+                chain.push({ name: 'category', value: resolveTarget(routeRow.category) });
+            }
+
+            const stepKeys = Object.keys(routeRow)
+            .filter(key => /^step\d+$/i.test(key))
+            .sort((a, b) => parseInt(a.replace(/\D/g, ''), 10) - parseInt(b.replace(/\D/g, ''), 10));
+
+            for (let i = 0; i < stepKeys.length; i++) {
+                const currentStepKey = stepKeys[i];
+                const stepNum = currentStepKey.replace(/\D/g, '');
+                const suggestKey = `suggest${stepNum}`;
+
+                if (getSuggestValue(routeRow[suggestKey])) {
+                    const prevStep = chain[chain.length - 1];
+                    if (prevStep) {
+                        chain.push({ name: suggestKey, value: prevStep.value, isSuggest: true });
+                    }
+                }
+
+                if (routeRow[currentStepKey]) {
+                    chain.push({ name: currentStepKey, value: resolveTarget(routeRow[currentStepKey]), isSuggest: false });
+                }
+            }
+
+            for (let step of chain) {
+                const targetNorm = normalizeText(step.value);
+                ui.setStatus(`КЛИК ${step.name.toUpperCase()}`, '#00aaff');
+
+                if (step.isSuggest) {
+                    ui.log(`Поиск подсказки (${step.name}): "${step.value}"...`);
+                    const suggestElement = await waitForFieldReady(() => {
+                        const spans = Array.from(document.querySelectorAll('span[style*="var(--theme-semantics-text-secondary)"]'));
+                        return spans.find(el => normalizeText(el.innerText || el.textContent) === targetNorm);
+                    }, 2000);
+
+                    if (suggestElement) {
+                        await triggerFullClick(suggestElement);
+                        ui.log(`Выбрана подсказка (${step.name}): "${step.value}"`, '#50fa7b');
+                        await sleep(200);
+                    } else {
+                        ui.log(`⚠️ Не найдена подсказка (${step.name}) для: "${step.value}"`, '#ffb86c');
+                    }
+                } else {
+                    ui.log(`Поиск категории: "${step.value}"...`);
+                    const element = await waitForFieldReady(() => {
+                        const buttons = Array.from(document.querySelectorAll('[data-marker="category-wizard/button"]'));
+                        return buttons.find(el => normalizeText(el.innerText || el.textContent) === targetNorm);
+                    }, 2000);
+
+                    if (element) {
+                        await triggerFullClick(element);
+                        ui.log(`Выбрано: "${step.value}"`, '#50fa7b');
+                        await sleep(200);
+                    } else {
+                        ui.log(`⚠️ Пропущен шаг ${step.name}: элемент "${step.value}" не найден`, '#ffb86c');
+                    }
+                }
+            }
+
+            ui.setStatus('ПОДГОТОВКА ПОЛЕЙ', '#00aaff');
+            ui.log('--- ROUTE ЗАВЕРШЕН, ПЕРЕХОД К ПОЛЯМ ---', '#00aaff');
+
+            if (extractedFields.length > 0) {
+                ui.log(`Запуск заполнения полей (всего: ${extractedFields.length})`);
+                ui.setStatus('ЗАПОЛНЕНИЕ ПОЛЕЙ', '#00aaff');
+
+                for (let i = 0; i < extractedFields.length; i++) {
+                    const field = extractedFields[i];
+                    let cleanVal = parseTargetText(field.value);
+                    let isUsingDefault = false;
+
+                    if (!cleanVal && field.default_value) {
+                        cleanVal = parseTargetText(field.default_value) || String(field.default_value).trim();
+                        isUsingDefault = true;
+                    }
+
+                    if (!cleanVal) {
+                        ui.log(`⚠️ [${i + 1}/${extractedFields.length}] Пропущено поле "${field.name}" (нет значения)`, '#ffb86c');
+                        continue;
+                    }
+
+                    const logTag = isUsingDefault ? ' [DEFAULT]' : '';
+                    ui.log(`👉 [${i + 1}/${extractedFields.length}] Поле "${field.name}" (${field.type})${logTag} ➔ "${cleanVal}"`, '#f1fa8c');
+
+                    if (i > 0) await sleep(150);
+
+                    const fieldToFill = {
+                        ...field,
+                        targetValue: cleanVal,
+                        isDefaultUsed: isUsingDefault
+                    };
+
+                    const success = await fillFormField(fieldToFill);
+
+                    if (success) {
+                        ui.log(`✅ [${i + 1}/${extractedFields.length}] Готово: "${field.name}"`, '#50fa7b');
+                        if (isUsingDefault || field.name.toLowerCase().includes('тип') || field.name.toLowerCase().includes('марк')) {
+                            ui.log(`⏳ Ожидание появления зависимых полей...`, '#00aaff');
+                            await sleep(800);
+                        }
+                    } else {
+                        ui.log(`❌ [${i + 1}/${extractedFields.length}] Не удалось заполнить: ${field.name}`, '#ff5555');
+                    }
+                    await sleep(100);
+                }
+            } else {
+                ui.log(`⚠️ Массив полей пуст!`, '#ffb86c');
+            }
+
+            ui.setStatus('УСПЕШНО', '#50fa7b');
+            ui.log('Все операции завершены! 🎉', '#50fa7b');
+        } finally {
+            ScrollLock.unlock();
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', runPipeline);
+    } else {
+        runPipeline();
+    }
+}
 })();
