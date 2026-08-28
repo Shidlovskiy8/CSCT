@@ -1,189 +1,276 @@
 (function() {
     'use strict';
 
-    // ПРОВЕРКА URL: Работаем на всех каталогах, где есть /modifications/
-    if (!window.location.href.startsWith('https://catalogs.avito.ru/catalog/')) {
-        return;
-    }
-    if (!window.location.href.includes('/modifications/')) {
+    if (!window.location.hostname.includes('catalogs.avito.ru')) {
         return;
     }
 
-    // Защита от дублей
-    if (window.__searchIdScriptInjected) return;
-    window.__searchIdScriptInjected = true;
+    // Заглушки или функции для вспомогательной логики (если они не определены глобально)
+    const fetchTableData = window.fetchTableData || async function() { return { fields: [], route: [] }; };
+    const normalizeText = window.normalizeText || function(text) { return text ? String(text).trim().toLowerCase() : ''; };
+    const parseTargetText = window.parseTargetText || function(text) { return text ? String(text).trim() : ''; };
+    const resolveTarget = window.resolveTarget || function(text) { return text ? String(text).trim() : ''; };
+    const promptUserForCustomValue = window.promptUserForCustomValue || async function(fieldName, options) { return options[0]; };
+    const copyToClipboard = window.copyToClipboard || function(text) {
+        navigator.clipboard.writeText(text).catch(() => {});
+    };
 
-    const WEBHOOK_URL = 'https://bpa-n8n-stage.k.avito.ru/webhook/d1022c79-45b8-4971-9712-53ccd03cbd25';
-    const BUTTON_ID = 'tm-inline-webhook-btn';
+    let preloadedTableData = null;
+    fetchTableData().then(data => { preloadedTableData = data; }).catch(() => {});
 
-    console.log('🚀 [AvitoScript] Запуск скрипта сбора параметров...');
+    let buttonInjected = false;
 
-    // 1. СОЗДАНИЕ КНОПКИ (Стиль "Автоклик" + иконка из вашего примера)
-    function createInlineButton() {
+    function injectButton() {
+        if (buttonInjected) return;
+
+        const targetEl = document.querySelector('button[data-marker="modification-name/historyBtn"]') ||
+              document.querySelector('[class*="modification-name"]') ||
+              document.querySelector('h1');
+
+        if (!targetEl) return;
+
+        const existingBtn = targetEl.parentNode?.querySelector('button[id*="tm-inline-webhook-btn"]') ||
+              Array.from(targetEl.parentNode?.querySelectorAll('button') || []).find(b => b.textContent.includes('Автоклик'));
+              
+        if (existingBtn) {
+            buttonInjected = true;
+            return;
+        }
+
         const btn = document.createElement('button');
-        btn.id = BUTTON_ID;
         btn.type = 'button';
         btn.textContent = '🚀 Автоклик';
-        btn.title = 'Собрать и отправить все параметры';
-        
-        // Стили кнопки-текста (как в рабочем примере)
         btn.style.cssText = `
-            margin-left: 8px; 
-            padding: 4px 10px; 
-            background-color: #00aaff;
-            color: #ffffff; 
-            border: none; 
-            border-radius: 4px; 
-            cursor: pointer;
-            font-size: 12px; 
-            font-weight: bold; 
-            vertical-align: middle; 
-            z-index: 9999;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            transition: background-color 0.2s;
+            margin-left: 8px; padding: 4px 10px; background-color: #00aaff;
+            color: #ffffff; border: none; border-radius: 4px; cursor: pointer;
+            font-size: 12px; font-weight: bold; vertical-align: middle; z-index: 9999;
+            display: inline-flex; align-items: center; gap: 4px;
         `;
 
-        // Добавим маленькую иконку внутри для красоты
-        btn.innerHTML += `
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-        `;
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
 
-        btn.addEventListener('mouseenter', () => btn.style.backgroundColor = '#0099e6');
-        btn.addEventListener('mouseleave', () => btn.style.backgroundColor = '#00aaff');
+            btn.textContent = '⏳ Сбор...';
+            btn.disabled = true;
 
-        return btn;
-    }
+            try {
+                const catalogSpan = document.querySelector('span.styles-module-size_s-e9rn2') ||
+                      document.querySelector('span[data-marker="modification/select-text"]') ||
+                      document.querySelector('h1');
+                const catalogText = catalogSpan ? catalogSpan.textContent.trim() : null;
 
-    // 2. СБОР ДАННЫХ (Автоматически со страницы)
-    function collectAllParams() {
-        const params = {};
-        const labelEl = document.querySelector('[data-marker="modification-name/label"]');
-        const modificationId = labelEl ? labelEl.textContent.replace('Модификация:', '').trim() : '';
-
-        // Проходим по всем строкам параметров
-        document.querySelectorAll('div[data-marker="modification/param"]').forEach(row => {
-            const nameLink = row.querySelector('a[data-marker="modification/param-name-link"]');
-            if (!nameLink) return;
-
-            const paramName = nameLink.textContent.trim();
-            const values = [];
-            
-            // Собираем все значения (ссылки)
-            const valueLinks = row.querySelectorAll('a[data-marker="modification/value-name-link"]');
-            if (valueLinks.length > 0) {
-                valueLinks.forEach(link => {
-                    const val = link.textContent.trim();
-                    if (val) values.push(val);
-                });
-            } else {
-                // Фоллбэк: текст из контейнера
-                const valContainer = row.querySelector('[class*="valueList"], [class*="valueLabel"]');
-                if (valContainer) {
-                    const val = valContainer.textContent.trim();
-                    if (val) values.push(val);
+                if (!catalogText) {
+                    alert('Не удалось определить название каталога на странице!');
+                    return;
                 }
-            }
 
-            if (values.length > 0) {
-                params[paramName] = values.length === 1 ? values[0] : values;
+                let dynamicValues = [];
+                const catalogTextNorm = normalizeText(catalogText);
+
+                const tableData = preloadedTableData || await fetchTableData();
+                const fieldsConfig = tableData.fields || [];
+
+                if (fieldsConfig.length > 0) {
+                    const matchingFieldsConfig = fieldsConfig.filter(cfg => {
+                        const fieldCatalog = cfg.Catalog || cfg.catalog || cfg.catalog_name;
+                        if (!fieldCatalog) return false;
+                        const cfgCatNorm = normalizeText(parseTargetText(fieldCatalog));
+                        return cfgCatNorm && (catalogTextNorm.includes(cfgCatNorm) || cfgCatNorm.includes(catalogTextNorm));
+                    });
+
+                    const pageParamsMap = new Map();
+
+                    document.querySelectorAll('div[data-marker="modification/param"]').forEach(row => {
+                        const nameLink = row.querySelector('a[data-marker="modification/param-name-link"]');
+                        if (!nameLink) return;
+
+                        const paramNameKey = normalizeText(nameLink.textContent);
+                        const valLinks = Array.from(row.querySelectorAll('a[data-marker="modification/value-name-link"]'));
+
+                        if (valLinks.length > 0) {
+                            const combinedValues = valLinks.map(a => a.textContent.trim()).filter(Boolean).join(', ');
+                            pageParamsMap.set(paramNameKey, combinedValues);
+                        } else {
+                            const valContainer = row.querySelector('[class*="valueList"], [class*="valueContainer"], span');
+                            if (valContainer) {
+                                pageParamsMap.set(paramNameKey, valContainer.textContent.trim());
+                            }
+                        }
+                    });
+
+                    for (const cfg of matchingFieldsConfig) {
+                        const fieldName = cfg.value;
+                        if (!fieldName) continue;
+
+                        const paramTarget = cfg.value_front_target || fieldName;
+                        const paramType = cfg.value_type || "list";
+                        const normFieldName = normalizeText(fieldName);
+
+                        const tableDefaultVal = cfg.default_value || cfg.defaultValue || cfg.default;
+                        const rawCustomType = cfg.custom_value_type || cfg.customValueType || "";
+                        const customType = String(rawCustomType).trim().toLowerCase();
+                        let customVal = cfg.custom_value || cfg.customValue || "";
+
+                        const pageParsedValue = pageParamsMap.get(normFieldName) || null;
+
+                        let val = null;
+                        let isDefault = false;
+
+                        if (customType === 'catalog') {
+                            if (pageParsedValue) {
+                                customVal = pageParsedValue;
+                            } else if (fieldName.toLowerCase().includes('модификац')) {
+                                customVal = catalogText;
+                            }
+                        }
+
+                        if (tableDefaultVal && String(tableDefaultVal).trim() !== "") {
+                            val = String(tableDefaultVal).trim();
+                            isDefault = true;
+                        } else {
+                            val = pageParsedValue ? pageParsedValue.split(',')[0].trim() : null;
+                            if (!val && fieldName.toLowerCase().includes('модификац')) {
+                                val = catalogText;
+                            }
+                        }
+
+                        let userSelectedValue = null;
+                        if ((customType === 'list' || customType === 'catalog') && customVal) {
+                            const options = String(customVal).split(',').map(opt => opt.trim()).filter(Boolean);
+                            if (options.length > 0) {
+                                btn.textContent = `⏳ Выбор: ${fieldName}`;
+                                userSelectedValue = await promptUserForCustomValue(fieldName, options);
+
+                                if (userSelectedValue === null) {
+                                    btn.textContent = '🚀 Автоклик';
+                                    btn.disabled = false;
+                                    return;
+                                }
+                            }
+                        }
+
+                        if (userSelectedValue) {
+                            val = userSelectedValue;
+                        }
+
+                        if (val || customVal) {
+                            dynamicValues.push({
+                                name: fieldName,
+                                type: paramType,
+                                target: paramTarget,
+                                value: val,
+                                default_value: tableDefaultVal,
+                                custom_value_type: customType,
+                                custom_value: customVal,
+                                isDefault: isDefault
+                            });
+                        }
+                    }
+
+                    dynamicValues.sort((a, b) => (b.isDefault ? 1 : 0) - (a.isDefault ? 1 : 0));
+                }
+
+                let categoryChainStr = '';
+                const routeData = tableData.route || tableData;
+                if (Array.isArray(routeData)) {
+                    let routeRow = routeData.find(r => {
+                        const cat = normalizeText(parseTargetText(r.Catalog || r.catalog));
+                        return cat && (catalogTextNorm.includes(cat) || cat.includes(catalogTextNorm));
+                    });
+
+                    if (routeRow) {
+                        const catSteps = [];
+                        if (routeRow.category) {
+                            catSteps.push(resolveTarget(routeRow.category));
+                        }
+
+                        const stepKeys = Object.keys(routeRow)
+                            .filter(key => /^step\d+$/i.test(key))
+                            .sort((a, b) => parseInt(a.replace(/\D/g, ''), 10) - parseInt(b.replace(/\D/g, ''), 10));
+
+                        stepKeys.forEach(k => {
+                            if (routeRow[k]) {
+                                catSteps.push(resolveTarget(routeRow[k]));
+                            }
+                        });
+
+                        if (catSteps.length > 0) {
+                            categoryChainStr = catSteps.join(' / ');
+                        }
+                    }
+                }
+
+                const clipboardLines = [];
+
+                if (categoryChainStr) {
+                    clipboardLines.push(`Категория: ${categoryChainStr}`);
+                    clipboardLines.push('');
+                }
+
+                dynamicValues.forEach(f => {
+                    let finalVal = parseTargetText(f.value);
+                    if (!finalVal && f.default_value) {
+                        finalVal = parseTargetText(f.default_value) || String(f.default_value).trim();
+                    }
+                    clipboardLines.push(`${f.name}: «${finalVal || ''}»`);
+                });
+
+                if (clipboardLines.length > 0) {
+                    copyToClipboard(clipboardLines.join('\n'));
+                }
+
+                const jsonFields = JSON.stringify(dynamicValues);
+                
+                if (typeof GM_setValue === 'function') {
+                    await GM_setValue('selected_catalog', catalogText);
+                    await GM_setValue('extracted_fields', jsonFields);
+                    await GM_setValue('autoclick_active', true);
+                }
+
+                try {
+                    localStorage.setItem('ac_selected_catalog', catalogText);
+                    localStorage.setItem('ac_extracted_fields', jsonFields);
+                    localStorage.setItem('ac_autoclick_active', 'true');
+                } catch(e) {}
+
+                window.open('https://www.avito.ru/additem', '_blank');
+
+            } catch (err) {
+                console.error("[AutoClicker Error]", err);
+                alert(`Ошибка автокликера: ${err.message || err}`);
+            } finally {
+                btn.textContent = '🚀 Автоклик';
+                btn.disabled = false;
             }
         });
 
-        return {
-            mode: 'auto_collect',
-            modification_id: modificationId,
-            url: window.location.href,
-            title: document.title,
-            params: params,
-            params_count: Object.keys(params).length
-        };
-    }
-
-    // 3. ОБРАБОТЧИК КЛИКА
-    async function handleButtonClick() {
-        const btn = document.getElementById(BUTTON_ID);
-        if (!btn) return;
-
-        const originalText = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '⏳ Отправка...';
-        btn.style.opacity = '0.7';
-
-        try {
-            // Собираем данные
-            const data = collectAllParams();
-            console.log('📦 Собранные данные:', data);
-
-            if (data.params_count === 0) {
-                alert('⚠️ Не удалось найти параметры на странице!');
-                return;
-            }
-
-            // Отправляем
-            const res = await fetch(WEBHOOK_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-
-            const text = await res.text();
-            
-            if (res.ok) {
-                alert(`✅ Успешно!\n\nОтправлено параметров: ${data.params_count}\nМодификация: ${data.modification_id}\n\nОтвет сервера:\n${text}`);
-            } else {
-                alert(`❌ Ошибка ${res.status}:\n${text}`);
-            }
-        } catch (err) {
-            alert(`❌ Сетевая ошибка: ${err.message}`);
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = originalText;
-            btn.style.opacity = '1';
+        if (targetEl.parentNode) {
+            targetEl.parentNode.insertBefore(btn, targetEl.nextSibling);
+            buttonInjected = true;
         }
     }
 
-    // 4. ВСТРАИВАНИЕ КНОПКИ (ВАШ РАБОЧИЙ МЕХАНИЗМ)
-    function injectButton() {
-        // Ищем конкретный контейнер, который работает на странице /params
-        // Пробуем несколько селекторов на всякий случай
-        const targetContainer = document.querySelector('.styles-module-itemLabelWrapper-Kpmoc') || 
-                                document.querySelector('[data-marker="modification-name/label"]')?.closest('div');
-
-        if (targetContainer && !document.getElementById(BUTTON_ID)) {
-            const btn = createInlineButton();
-            btn.addEventListener('click', handleButtonClick);
-
-            // Ищем блок иконок, чтобы встать после него (как в вашем примере)
-            const iconsBlock = targetContainer.querySelector('.styles-module-iconsBlock-gfM0R') ||
-                               targetContainer.querySelector('button[data-marker="modification-name/historyBtn"]');
-
-            if (iconsBlock) {
-                iconsBlock.insertAdjacentElement('afterend', btn);
-            } else {
-                targetContainer.appendChild(btn);
-            }
-            
-            console.log('✅ Кнопка добавлена в DOM');
+    let lastHref = window.location.href;
+    const urlObserver = new MutationObserver(() => {
+        if (window.location.href !== lastHref) {
+            lastHref = window.location.href;
+            buttonInjected = false;
+            setTimeout(injectButton, 300);
         }
-    }
-
-    // 5. ЗАПУСК
-    // Добавляем слушатель на body (на случай если контейнер перерисуется)
-    const observer = new MutationObserver(injectButton);
+    });
     
-    // Ждем загрузки тела
+    if (document.head) {
+        urlObserver.observe(document.head, { childList: true, subtree: true });
+    }
+
+    const observer = new MutationObserver(() => {
+        injectButton();
+    });
+
     if (document.body) {
         observer.observe(document.body, { childList: true, subtree: true });
-        // Первая попытка сразу
-        setTimeout(injectButton, 100);
-        setTimeout(injectButton, 500);
-        setTimeout(injectButton, 1500);
+        injectButton();
     } else {
         document.addEventListener('DOMContentLoaded', () => {
             observer.observe(document.body, { childList: true, subtree: true });
