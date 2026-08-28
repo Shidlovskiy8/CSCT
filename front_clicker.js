@@ -271,7 +271,10 @@ function normalizeText(text) {
     return String(text)
         .replace(/&nbsp;/g, ' ')
         .replace(/\u00a0/g, ' ')
-        .replace(/[—–-]/g, '-')
+        .replace(/ё/g, 'е') // КРИТИЧНО: приводим ё к е
+        .replace(/Ё/g, 'е')
+        .replace(/[—–−-]/g, '-') // нормализация всех видов тире/дефисов
+        .replace(/[«»""''„“]/g, '') // удаление всех видов кавычек
         .replace(/\s+/g, ' ')
         .trim()
         .toLowerCase();
@@ -285,23 +288,38 @@ function parseTargetText(rawText) {
         tempDiv.innerHTML = str;
         str = tempDiv.textContent.trim();
     }
-    return str.replace(/^["']|["']$/g, '').trim();
+    // Удаляем любые кавычки по краям и внутри
+    return str.replace(/^[«"""''„“]+|[«"""''„“]+$/g, '').trim();
 }
 
 function extractParamName(htmlString) {
     if (!htmlString) return null;
-    const match = String(htmlString).match(/(?:id|name|marker|data-marker)=["']([^"']+)["']/i);
-    if (match && match[1]) {
-        return match[1].replace('/input', '').trim();
+    const str = String(htmlString);
+    
+    // Сначала ищем точный name или id, так как они приоритетнее
+    const explicitMatch = str.match(/(?:name|id)=["']([^"']+)["']/i);
+    if (explicitMatch && explicitMatch[1]) {
+        return explicitMatch[1].trim();
     }
-    return parseTargetText(htmlString) || null;
+
+    // Если нет name/id, ищем data-marker или marker
+    const markerMatch = str.match(/(?:data-marker|marker)=["']([^"']+)["']/i);
+    if (markerMatch && markerMatch[1]) {
+        return markerMatch[1].replace(/\/input$/i, '').trim();
+    }
+
+    return parseTargetText(str) || null;
 }
 
 function resolveTarget(rawName) {
     if (!rawName) return "";
     const clean = parseTargetText(rawName);
-    const lowerKey = clean.toLowerCase();
-    return TARGET_MAP[lowerKey] || clean;
+    const lowerKey = normalizeText(clean); // Используем normalizeText вместо plain toLowerCase
+    
+    if (typeof TARGET_MAP !== 'undefined' && TARGET_MAP[lowerKey]) {
+        return TARGET_MAP[lowerKey];
+    }
+    return clean;
 }
 
 function sleep(ms) {
@@ -311,13 +329,12 @@ function sleep(ms) {
 function copyToClipboard(text) {
     if (typeof GM_setClipboard === 'function') {
         GM_setClipboard(text);
-    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+    } else if (navigator?.clipboard?.writeText) {
         navigator.clipboard.writeText(text).catch(err => {
             console.error('Ошибка копирования в буфер обмена: ', err);
         });
     }
 }
-
 // =================================================================
 // ОЖИДАНИЕ: Поиск + проверка видимости, готовности и анимации
 // =================================================================
