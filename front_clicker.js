@@ -1,23 +1,148 @@
-// front_clicker.js
 (function() {
     'use strict';
 
-    // Проверка URL: запускаем скрипт только на страницах автокаталога Avito
     if (!window.location.href.startsWith('https://catalogs.avito.ru/catalog/')) {
         return;
     }
 
-    // Защита от повторной инициализации
-    if (window.__carParamsWebhookInjected) return;
-    window.__carParamsWebhookInjected = true;
+    if (window.__modParamsScriptInjected) return;
+    window.__modParamsScriptInjected = true;
 
     const WEBHOOK_URL = 'https://bpa-n8n-stage.k.avito.ru/webhook/d1022c79-45b8-4971-9712-53ccd03cbd25';
-    const BUTTON_ID = 'tm-inline-webhook-btn';
+    const API_KEY = ''; 
 
-    // 1. СОЗДАНИЕ ИНЛАЙН-КНОПКИ
+    // Создание модального окна для отображения отправленных данных
+    const modalOverlay = document.createElement('div');
+    Object.assign(modalOverlay.style, {
+        position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(3px)',
+        zIndex: '2147483647', display: 'none', justifyContent: 'center',
+        alignItems: 'center', fontFamily: 'sans-serif'
+    });
+
+    modalOverlay.innerHTML = `
+        <div style="
+            background: #1e1e2e; color: #cdd6f4; padding: 20px; border-radius: 12px;
+            width: 450px; max-width: 90vw; box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            border: 1px solid #313244; display: flex; flex-direction: column; gap: 12px;
+        ">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0; font-size: 15px; color: #cdd6f4;">Отправка параметров модификации</h3>
+                <span id="tm-close" style="cursor: pointer; font-size: 18px; color: #a6adc8;">✕</span>
+            </div>
+
+            <div id="tm-response-container" style="display: flex; flex-direction: column; gap: 6px;">
+                <span style="font-size: 12px; font-weight: 600; color: #a6e3a1;" id="tm-status-title">📥 Ответ сервера:</span>
+                <div id="tm-response-output" style="
+                    background: #11111b; border: 1px solid #45475a; border-radius: 8px;
+                    padding: 10px; font-size: 12px; color: #a6adc8; max-height: 250px;
+                    overflow-y: auto; white-space: pre-wrap; font-family: monospace;
+                "></div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px;">
+                <button id="tm-cancel" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #45475a; background: transparent; color: #cdd6f4; cursor: pointer;">Закрыть</button>
+            </div>
+        </div>
+    `;
+
+    const cancelBtn = modalOverlay.querySelector('#tm-cancel');
+    const closeBtn = modalOverlay.querySelector('#tm-close');
+    const responseOutput = modalOverlay.querySelector('#tm-response-output');
+    const statusTitle = modalOverlay.querySelector('#tm-status-title');
+
+    function closeModal() {
+        modalOverlay.style.display = 'none';
+    }
+
+    cancelBtn.addEventListener('click', closeModal);
+    closeBtn.addEventListener('click', closeModal);
+
+    // Функция сбора параметров из DOM
+    function collectModificationData() {
+        const rootContainer = document.querySelector('.styles-module-root-I6AxT');
+        const data = {
+            url: window.location.href,
+            title: document.title,
+            parameters: {}
+        };
+
+        if (!rootContainer) return data;
+
+        // Извлечение названия модификации
+        const labelEl = rootContainer.querySelector('[data-marker="modification-name/label"]');
+        if (labelEl) {
+            data.modificationName = labelEl.textContent.trim();
+        }
+
+        // Извлечение всех параметров характеристики
+        const paramRows = rootContainer.querySelectorAll('[data-marker="modification/param"]');
+        paramRows.forEach(row => {
+            const nameLink = row.querySelector('[data-marker="modification/param-name-link"]');
+            const valueLink = row.querySelector('[data-marker="modification/value-name-link"]');
+            
+            if (nameLink && valueLink) {
+                const paramName = nameLink.textContent.trim();
+                const paramValue = valueLink.textContent.trim();
+                data.parameters[paramName] = paramValue;
+            }
+        });
+
+        return data;
+    }
+
+    // Обработчик нажатия на кнопку отправки
+    async function handleButtonClick(btnInstance) {
+        const payload = collectModificationData();
+
+        btnInstance.style.opacity = '0.6';
+        btnInstance.style.pointerEvents = 'none';
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (API_KEY) headers['X-API-Key'] = API_KEY;
+
+        modalOverlay.style.display = 'flex';
+        statusTitle.style.color = '#89b4fa';
+        statusTitle.textContent = '⏳ Отправка данных...';
+        responseOutput.innerText = JSON.stringify(payload, null, 2);
+
+        try {
+            const res = await fetch(WEBHOOK_URL, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(payload)
+            });
+
+            const responseText = await res.text();
+            statusTitle.style.color = '#a6e3a1';
+            statusTitle.textContent = '📥 Ответ сервера:';
+
+            if (res.ok) {
+                try {
+                    const json = JSON.parse(responseText);
+                    responseOutput.innerText = typeof json === 'object'
+                        ? JSON.stringify(json, null, 2)
+                        : json;
+                } catch (e) {
+                    responseOutput.innerText = responseText || '(Пустой ответ)';
+                }
+            } else {
+                responseOutput.innerText = `Ошибка ${res.status}:\n${responseText}`;
+            }
+        } catch (err) {
+            statusTitle.style.color = '#f38ba8';
+            statusTitle.textContent = '❌ Ошибка сети:';
+            responseOutput.innerText = err.message;
+        } finally {
+            btnInstance.style.opacity = '1';
+            btnInstance.style.pointerEvents = 'auto';
+        }
+    }
+
+    // Создание элемента кнопки
     function createInlineButton() {
         const btn = document.createElement('div');
-        btn.id = BUTTON_ID;
+        btn.id = 'tm-inline-webhook-btn';
         btn.title = 'Отправить параметры на вебхук';
 
         Object.assign(btn.style, {
@@ -33,10 +158,10 @@
             marginRight: '4px',
             flexShrink: '0',
             transition: 'background-color 0.2s ease',
-            userSelect: 'none'
+            userSelect: 'none',
+            pointerEvents: 'auto'
         });
 
-        // Иконка передачи/облака
         btn.innerHTML = `
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -47,94 +172,29 @@
 
         btn.addEventListener('mouseenter', () => btn.style.backgroundColor = '#e65c00');
         btn.addEventListener('mouseleave', () => btn.style.backgroundColor = '#ff6600');
+        btn.addEventListener('click', () => handleButtonClick(btn));
 
         return btn;
     }
 
-    // 2. ИЗВЛЕЧЕНИЕ ПАРАМЕТРОВ АВТОМОБИЛЯ
-    function extractCarParameters() {
-        const data = {};
-        const paramRows = document.querySelectorAll('div[data-marker="modification/param"]');
-
-        paramRows.forEach(row => {
-            const nameEl = row.querySelector('a[data-marker="modification/param-name-link"]');
-            const valueEls = row.querySelectorAll('a[data-marker="modification/value-name-link"]');
-
-            if (nameEl) {
-                const paramName = nameEl.textContent.trim();
-                const values = Array.from(valueEls).map(el => el.textContent.trim());
-
-                data[paramName] = values.length === 1 ? values[0] : values;
-            }
-        });
-
-        return data;
-    }
-
-    // 3. ОБРАБОТЧИК КЛИКА И ОТПРАВКА
-    async function handleWebhookSend(btn) {
-        const carData = extractCarParameters();
-        
-        const originalHTML = btn.innerHTML;
-        btn.style.pointerEvents = 'none';
-        btn.style.backgroundColor = '#585b70';
-        btn.innerHTML = `
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" style="animation: spin 1s linear infinite;">
-                <circle cx="12" cy="12" r="10" stroke-opacity="0.3"></circle>
-                <path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"></path>
-            </svg>
-        `;
-
-        try {
-            const response = await fetch(WEBHOOK_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    parameters: carData,
-                    url: window.location.href,
-                    title: document.title
-                })
-            });
-
-            if (response.ok) {
-                btn.style.backgroundColor = '#a6e3a1';
-                setTimeout(() => {
-                    btn.style.backgroundColor = '#ff6600';
-                    btn.innerHTML = originalHTML;
-                    btn.style.pointerEvents = 'auto';
-                }, 1500);
-            } else {
-                throw new Error(`Ошибка ${response.status}: ${response.statusText}`);
-            }
-        } catch (error) {
-            console.error('Webhook error:', error);
-            btn.style.backgroundColor = '#f38ba8';
-            setTimeout(() => {
-                btn.style.backgroundColor = '#ff6600';
-                btn.innerHTML = originalHTML;
-                btn.style.pointerEvents = 'auto';
-            }, 2000);
-        }
-    }
-
-    // 4. ВСТРАИВАНИЕ КНОПКИ В DOM
+    // Встраивание кнопки справа от плашки модификации
     function injectButton() {
-        const container = document.querySelector('div.styles-module-root-oD3Gk');
-        
-        if (container && !document.getElementById(BUTTON_ID)) {
+        const targetContainer = document.querySelector('.styles-module-root-oD3Gk');
+
+        if (targetContainer && !document.getElementById('tm-inline-webhook-btn')) {
             const btn = createInlineButton();
-            btn.addEventListener('click', () => handleWebhookSend(btn));
-            container.appendChild(btn);
+            targetContainer.appendChild(btn);
         }
+    }
+
+    if (document.body) {
+        document.body.appendChild(modalOverlay);
+    } else {
+        document.addEventListener('DOMContentLoaded', () => document.body.appendChild(modalOverlay));
     }
 
     const observer = new MutationObserver(injectButton);
-    observer.observe(document.body || document.documentElement, {
-        childList: true,
-        subtree: true
-    });
+    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
 
     injectButton();
 })();
