@@ -994,29 +994,43 @@ if (window.location.hostname.includes('catalogs.avito.ru')) {
 // =================================================================
 if (window.location.hostname.includes('avito.ru') && window.location.pathname.includes('/additem')) {
 
-    const isActive = chrome.storage.local.get('autoclick_active', false) || localStorage.getItem('ac_autoclick_active') === 'true';
-    if (!isActive) return;
-
     async function runPipeline() {
+        // 1. Инициализируем UI сразу, чтобы видеть статус
+        ui = new DebugUI();
+        ui.setStatus('ПРОВЕРКА', '#ffb86c');
+
+        // Корректное асинхронное чтение из chrome.storage
+        const storageData = await chrome.storage.local.get(['autoclick_active', 'selected_catalog', 'extracted_fields']);
+        const isActive = storageData.autoclick_active || localStorage.getItem('ac_autoclick_active') === 'true';
+
+        if (!isActive) {
+            ui.setStatus('НЕ АКТИВЕН', '#666');
+            ui.log('Автоклик отключен (флаг активности = false)');
+            return;
+        }
+
         ScrollLock.lock();
 
         try {
-            await chrome.storage.local.set('autoclick_active', false);
+            await chrome.storage.local.set({ autoclick_active: false });
             localStorage.removeItem('ac_autoclick_active');
 
-            let selectedCatalog = chrome.storage.local.get('selected_catalog', null) || localStorage.getItem('ac_selected_catalog');
-            let extractedFieldsRaw = chrome.storage.local.get('extracted_fields', null) || localStorage.getItem('ac_extracted_fields') || '[]';
+            let selectedCatalog = storageData.selected_catalog || localStorage.getItem('ac_selected_catalog');
+            let extractedFieldsRaw = storageData.extracted_fields || localStorage.getItem('ac_extracted_fields') || '[]';
 
             let extractedFields = [];
             try { extractedFields = JSON.parse(extractedFieldsRaw); } catch(e) { extractedFields = []; }
 
-            if (!selectedCatalog) return;
+            if (!selectedCatalog) {
+                ui.setStatus('ОШИБКА', '#ff5555');
+                ui.log('❌ Не выбран каталог (selected_catalog пуст)', '#ff5555');
+                return;
+            }
 
-            ui = new DebugUI();
+            // Настройка UI данными
             ui.setStatus('ЗАПУСК', '#ffcc00');
             ui.setFields(extractedFields);
             ui.log(`Кликер запущен для: "${selectedCatalog}"`);
-
             await safeResetDropdownState();
 
             const anotherCategoryBtn = await waitForFieldReady(() => {
