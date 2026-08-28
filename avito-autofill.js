@@ -1,8 +1,6 @@
 (function () {
     'use strict';
 
-    console.log('[Avito AutoFill] Скрипт загружен и инициализируется...');
-
     // -----------------------------------------------------------------
     // КОНФИГУРАЦИЯ GOOGLE SHEETS API
     // -----------------------------------------------------------------
@@ -107,7 +105,6 @@
     // ИНТЕГРАЦИЯ С GOOGLE SHEETS API
     // -----------------------------------------------------------------
     async function fetchTableData(forceRefresh = false) {
-        console.log('[Avito AutoFill] Запуск fetchTableData');
         const cached = localStorage.getItem(STORAGE_CACHE_KEY);
         if (cached && !forceRefresh) {
             ui.log('📦 Данные извлечены из локального кэша', '#89b4fa');
@@ -165,7 +162,7 @@
     }
 
     // -----------------------------------------------------------------
-    // МОДУЛЬ ЗАПОЛНЕНИЯ ПОЛЯ С АВТО-СКРОЛЛОМ
+    // МОДУЛЬ ЗАПОЛНЕНИЯ ПОЛЯ
     // -----------------------------------------------------------------
     async function fillFormField(field) {
         const { type, target, value, name, default_value, targetValue } = field;
@@ -179,7 +176,7 @@
         if (!valClean) return false;
         await safeResetDropdownState();
 
-        // 1. ПРОВЕРКА НА РАДИОКНОПКИ / КНОПКИ
+        // 1. РАДИОКНОПКИ / КНОПКИ
         const fieldContainerElement = targetClean
             ? document.querySelector(`[data-marker*="${targetClean}"], [class*="${targetClean}"]`)
             : null;
@@ -279,7 +276,7 @@
             }
         }
 
-        // 2. ПРОВЕРКА НА ВЫПАДАЮЩИЕ СПИСКИ (Dropdown)
+        // 2. ВЫПАДАЮЩИЕ СПИСКИ (Dropdown)
         const isDropdownType =
             type === 'dropdown' ||
             (name && (name.toLowerCase().includes('модификац') || name.toLowerCase().includes('комплектац')));
@@ -363,7 +360,7 @@
             }
         }
 
-        // 3. ТЕКСТОВЫЕ ВВОДЫ И СПИСКИ С ПОДСКАЗКАМИ (Input / Suggest / List)
+        // 3. ТЕКСТОВЫЕ ВВОДЫ (Input / Suggest / List)
         if (!targetClean) return false;
 
         const input = await waitForFieldReady(() => {
@@ -424,12 +421,8 @@
     // -----------------------------------------------------------------
     // ОСНОВНОЙ СЦЕНАРИЙ ИСПОЛНЕНИЯ
     // -----------------------------------------------------------------
-    async function processManualInput() {
-        console.log('[Avito AutoFill] Запуск processManualInput');
-        const inputEl = document.getElementById('ac-input-text');
-        const rawText = inputEl ? inputEl.value.trim() : '';
-
-        if (!rawText) {
+    async function processManualInput(rawText) {
+        if (!rawText || !rawText.trim()) {
             ui.log('⚠️ Поле ввода пустое. Вставьте данные.', '#f38ba8');
             return;
         }
@@ -469,68 +462,104 @@
     }
 
     // -----------------------------------------------------------------
-    // UI МЕНЕДЖЕР (С защитой от перехвата событий React/Avito)
+    // ИНТЕРФЕЙС (Плавающая кнопка + Модальное окно)
     // -----------------------------------------------------------------
     const ui = {
-        panel: null,
+        triggerBtn: null,
+        modalOverlay: null,
         logContainer: null,
 
         init() {
-            if (document.getElementById('ac-control-panel')) return;
+            if (document.getElementById('ac-trigger-btn')) return;
 
-            const container = document.createElement('div');
-            container.id = 'ac-control-panel';
-            container.style.cssText = `
-                position: fixed !important; top: 20px !important; right: 20px !important; z-index: 2147483647 !important;
-                background: #1e1e2e !important; color: #cdd6f4 !important; border: 1px solid #45475a !important;
-                border-radius: 8px !important; padding: 12px !important; font-family: monospace !important; font-size: 12px !important;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.6) !important; width: 360px !important; pointer-events: auto !important;
+            // 1. Создаем маленькую аккуратную кнопку
+            const btn = document.createElement('button');
+            btn.id = 'ac-trigger-btn';
+            btn.type = 'button';
+            btn.innerHTML = '⚡ Автозаполнение';
+            btn.style.cssText = `
+                position: fixed !important; bottom: 25px !important; right: 25px !important; z-index: 2147483646 !important;
+                background: #89b4fa !important; color: #11111b !important; border: none !important;
+                border-radius: 50px !important; padding: 12px 20px !important; font-family: sans-serif !important;
+                font-weight: bold !important; font-size: 13px !important; cursor: pointer !important;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important; transition: transform 0.2s, background 0.2s !important;
             `;
 
-            container.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <b style="color:#89b4fa; font-size:14px;">🚀 Avito AutoFill v2.0</b>
-                    <button id="ac-close-btn" type="button" style="background:none; border:none; color:#f38ba8; cursor:pointer; font-size:14px;">✖</button>
-                </div>
-                <textarea id="ac-input-text" rows="5" placeholder="Вставьте данные списком:&#10;[1. list] Производитель: params[112916] ➔ &quot;Acer&quot;&#10;Модель: params[112912] ➔ &quot;Aspire&quot;" style="width:100%; background:#11111b; color:#a6adc8; border:1px solid #313244; border-radius:4px; padding:6px; box-sizing:border-box; resize:vertical; font-size:11px;"></textarea>
-                <div style="display:flex; gap:6px; margin-top:8px;">
-                    <button id="ac-start-btn" type="button" style="flex:1; background:#a6e3a1; color:#11111b; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer;">▶ Запустить заполнение</button>
-                    <button id="ac-sync-gs-btn" type="button" style="background:#89b4fa; color:#11111b; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer;">🔄 БД GS</button>
-                </div>
-                <div id="ac-log-container" style="margin-top:8px; max-height:150px; overflow-y:auto; background:#11111b; padding:6px; border-radius:4px; border:1px solid #313244; font-size:10px;"></div>
-            `;
-
-            document.body.appendChild(container);
-            this.panel = container;
-            this.logContainer = container.querySelector('#ac-log-container');
-
-            // Предотвращаем перехват кликов формой Avito
-            container.addEventListener('click', (e) => e.stopPropagation(), true);
-            container.addEventListener('mousedown', (e) => e.stopPropagation(), true);
-
-            const startBtn = container.querySelector('#ac-start-btn');
-            const syncBtn = container.querySelector('#ac-sync-gs-btn');
-            const closeBtn = container.querySelector('#ac-close-btn');
-
-            startBtn.onclick = (e) => {
+            btn.onmouseover = () => (btn.style.transform = 'scale(1.05)');
+            btn.onmouseout = () => (btn.style.transform = 'scale(1)');
+            btn.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                processManualInput();
+                this.openModal();
             };
 
-            syncBtn.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
+            document.body.appendChild(btn);
+            this.triggerBtn = btn;
+
+            // 2. Создаем модальное окно (изначально скрыто)
+            const overlay = document.createElement('div');
+            overlay.id = 'ac-modal-overlay';
+            overlay.style.cssText = `
+                display: none; position: fixed !important; top: 0 !important; left: 0 !important;
+                width: 100vw !important; height: 100vh !important; background: rgba(0,0,0,0.6) !important;
+                backdrop-filter: blur(3px) !important; z-index: 2147483647 !important;
+                justify-content: center !important; align-items: center !important;
+            `;
+
+            overlay.innerHTML = `
+                <div style="background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 12px; padding: 16px; width: 440px; max-width: 90vw; box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-family: monospace; font-size: 12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <b style="color:#89b4fa; font-size:15px;">🚀 Автозаполнение Avito</b>
+                        <button id="ac-modal-close" type="button" style="background:none; border:none; color:#f38ba8; cursor:pointer; font-size:18px;">✖</button>
+                    </div>
+                    <textarea id="ac-modal-text" rows="8" placeholder="Вставьте скопированные данные сюда..." style="width:100%; background:#11111b; color:#a6adc8; border:1px solid #313244; border-radius:6px; padding:8px; box-sizing:border-box; resize:vertical; font-size:11px; outline:none;"></textarea>
+                    <div style="display:flex; gap:8px; margin-top:10px;">
+                        <button id="ac-modal-start" type="button" style="flex:2; background:#a6e3a1; color:#11111b; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">▶ Запустить</button>
+                        <button id="ac-modal-sync" type="button" style="flex:1; background:#89b4fa; color:#11111b; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">🔄 БД GS</button>
+                    </div>
+                    <div id="ac-modal-log" style="margin-top:10px; max-height:120px; overflow-y:auto; background:#11111b; padding:8px; border-radius:6px; border:1px solid #313244; font-size:10px; display:none;"></div>
+                </div>
+            `;
+
+            document.body.appendChild(overlay);
+            this.modalOverlay = overlay;
+            this.logContainer = overlay.querySelector('#ac-modal-log');
+
+            // Блокируем клики сквозь окно
+            const prevent = (e) => e.stopPropagation();
+            overlay.addEventListener('click', prevent, true);
+            overlay.addEventListener('mousedown', prevent, true);
+
+            // Навешиваем события на элементы модалки
+            overlay.querySelector('#ac-modal-close').onclick = () => this.closeModal();
+            overlay.onclick = (e) => {
+                if (e.target === overlay) this.closeModal();
+            };
+
+            overlay.querySelector('#ac-modal-start').onclick = () => {
+                const text = overlay.querySelector('#ac-modal-text').value;
+                this.logContainer.style.display = 'block';
+                processManualInput(text);
+            };
+
+            overlay.querySelector('#ac-modal-sync').onclick = () => {
+                this.logContainer.style.display = 'block';
                 fetchTableData(true);
             };
+        },
 
-            closeBtn.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                container.remove();
-            };
+        openModal() {
+            if (this.modalOverlay) {
+                this.modalOverlay.style.display = 'flex';
+                const textarea = this.modalOverlay.querySelector('#ac-modal-text');
+                if (textarea) textarea.focus();
+            }
+        },
 
-            console.log('[Avito AutoFill] Панель UI успешно смонтирована');
+        closeModal() {
+            if (this.modalOverlay) {
+                this.modalOverlay.style.display = 'none';
+            }
         },
 
         log(msg, color = '#cdd6f4') {
