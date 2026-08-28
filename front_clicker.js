@@ -1102,7 +1102,13 @@ async function runPipeline() {
         const storageData = await getStorageData(['autoclick_active', 'selected_catalog', 'extracted_fields']);
         
         const rawActive = storageData.autoclick_active;
-        const isActive = rawActive === true || rawActive === 'true' || localStorage.getItem('ac_autoclick_active') === 'true';
+        const localActive = localStorage.getItem('ac_autoclick_active');
+        
+        // Надежное определение флага
+        const isActive = rawActive === true || 
+                         rawActive === 'true' || 
+                         localActive === 'true' || 
+                         localStorage.getItem('autoclick_active') === 'true';
 
         if (!isActive) {
             stopWatchdog();
@@ -1111,10 +1117,8 @@ async function runPipeline() {
             return;
         }
 
-        // --- 2. СБРОС ФЛАГОВ И ПОДГОТОВКА ---
-        setStep('СБРОС ФЛАГОВ', 'Очистка флагов и парсинг полей');
-        await setStorageData({ autoclick_active: false });
-        localStorage.removeItem('ac_autoclick_active');
+        // --- 2. ПОДГОТОВКА И ПАРСИНГ ДАННЫХ ---
+        setStep('ПАРСИНГ', 'Парсинг полей и выбор каталога');
 
         let selectedCatalog = storageData.selected_catalog || localStorage.getItem('ac_selected_catalog');
         let extractedFieldsRaw = storageData.extracted_fields || localStorage.getItem('ac_extracted_fields') || '[]';
@@ -1300,11 +1304,19 @@ async function runPipeline() {
             ui.log(`⚠️ Массив полей пуст! Ничего не заполнено.`, '#ffb86c');
         }
 
+        // --- СБРОС ФЛАГОВ ПОСЛЕ УСПЕШНОГО ЗАВЕРШЕНИЯ ---
+        await setStorageData({ autoclick_active: false });
+        localStorage.removeItem('ac_autoclick_active');
+
         stopWatchdog();
         ui.setStatus('УСПЕШНО', '#50fa7b');
         ui.log('🎉 ВСЕ ОПЕРАЦИИ УСПЕШНО ЗАВЕРШЕНЫ!', '#50fa7b');
 
     } catch (criticalError) {
+        // --- СБРОС ФЛАГОВ В СЛУЧАЕ ОШИБКИ ---
+        await setStorageData({ autoclick_active: false });
+        localStorage.removeItem('ac_autoclick_active');
+
         stopWatchdog();
         ui.setStatus('КРИТИЧЕСКАЯ ОШИБКА', '#ff5555');
         ui.log(`💥 КРАШ СКРИПТА на шаге: "${currentTask}"`, '#ff5555');
@@ -1316,10 +1328,10 @@ async function runPipeline() {
     }
 }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', runPipeline);
-    } else {
-        runPipeline();
-    }
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', runPipeline);
+} else {
+    runPipeline();
+}
 }
 })();
